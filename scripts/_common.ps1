@@ -16,22 +16,59 @@ function Require-Command([string]$Name) {
     }
 }
 
+function Test-PythonCommand {
+    param(
+        [Parameter(Mandatory=$true)][string]$Executable,
+        [string[]]$PrefixArguments = @()
+    )
+
+    if (-not (Get-Command $Executable -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    try {
+        & $Executable @PrefixArguments --version *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Get-PythonInvocation {
-    if (Get-Command python -ErrorAction SilentlyContinue) { return @("python") }
-    if (Get-Command python3 -ErrorAction SilentlyContinue) { return @("python3") }
-    if (Get-Command py -ErrorAction SilentlyContinue) { return @("py", "-3") }
-    throw "A working Python 3 interpreter was not found (tried python, python3 and py -3)."
+    # On Windows, prefer the Python Launcher. "python.exe" can be only the
+    # Microsoft Store execution alias, so discovery must execute --version
+    # instead of trusting Get-Command alone.
+    if (Test-PythonCommand -Executable "py" -PrefixArguments @("-3")) {
+        return @("py", "-3")
+    }
+
+    if (Test-PythonCommand -Executable "python3") {
+        return @("python3")
+    }
+
+    if (Test-PythonCommand -Executable "python") {
+        return @("python")
+    }
+
+    throw "A working Python 3 interpreter was not found (tried py -3, python3 and python)."
 }
 
 function Invoke-Python {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
+
+    # @() is intentional: PowerShell unwraps a single-item returned array into
+    # a string; without this, $cmd[0] becomes the first character of "python".
     $cmd = @(Get-PythonInvocation)
+
     if ($cmd.Count -eq 1) {
         & $cmd[0] @Arguments
     } else {
         & $cmd[0] $cmd[1] @Arguments
     }
-    if ($LASTEXITCODE -ne 0) { throw "Python command failed with exit code $LASTEXITCODE." }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python command failed with exit code $LASTEXITCODE."
+    }
 }
 
 function Get-DotEnvValue([string]$Key, [string]$Path = $EnvFile) {

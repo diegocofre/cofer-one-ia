@@ -8,14 +8,52 @@ Important settings:
 
 | Variable | Purpose |
 |---|---|
-| `GATEWAY_PORT` | Public Ollama-compatible port, normally 11434 |
-| `GATEWAY_UPSTREAM_URL` | Headroom upstream used by the Ollama facade, normally `http://headroom-cline:8790` |
-| `GATEWAY_DEFAULT_CONTEXT_LENGTH` | Virtual context length advertised by `/api/show`; defaults to 32768 to match Cline's current Ollama default |
-| `OLLAMA_HOST` | Local CLI endpoint for physical Ollama, normally `127.0.0.1:11435`; the Windows managed server process uses a Docker-reachable bind |
+| `GATEWAY_PORT` | Public Ollama-compatible port, normally `11434` |
+| `GATEWAY_UPSTREAM_URL` | Internal Headroom upstream used by the Ollama facade, normally `http://headroom-cline:8787` |
+| `GATEWAY_DEFAULT_CONTEXT_LENGTH` | Virtual context length advertised by `/api/show`; defaults to `32768` |
+| `OLLAMA_HOST` | Local CLI endpoint for physical Ollama, normally `127.0.0.1:11435` |
 | `OLLAMA_BACKEND_URL` | Physical Ollama URL as seen from Docker |
 | `LITELLM_MASTER_KEY` | Internal gateway authentication secret |
 | `OPENROUTER_API_KEY` | Optional OpenRouter credential |
-| `HEADROOM_CLINE_PORT` | Cline Headroom statistics/optimization instance |
+| `HEADROOM_IMAGE` | Version-pinned Headroom runtime image |
+| `HEADROOM_SAVINGS_PROFILE` | Headroom optimization profile; defaults to `coding` |
+| `HEADROOM_CLINE_PORT` | Host-side Cline Headroom port, normally `8790` |
+
+## Headroom ports
+
+Every Headroom container listens internally on its native port:
+
+```text
+8787
+```
+
+Client isolation happens at the **host mapping**, not by changing the container port:
+
+```text
+host 8787 -> headroom-codex:8787
+host 8788 -> headroom-opencode:8787
+host 8789 -> headroom-zcode:8787
+host 8790 -> headroom-cline:8787
+host 8791 -> headroom-continue:8787
+```
+
+This keeps Headroom's built-in Docker healthcheck valid while preserving separate host endpoints and persistent state per client.
+
+## Headroom profile
+
+The default runtime is pinned to Headroom `v0.32.0` and uses:
+
+```dotenv
+HEADROOM_SAVINGS_PROFILE=coding
+```
+
+The `coding` profile is intended for coding-agent sessions and selects Headroom's cache-oriented proxy posture.
+
+Output shaping remains disabled independently:
+
+```dotenv
+HEADROOM_OUTPUT_SHAPER=0
+```
 
 ## `config/models.json`
 
@@ -51,6 +89,14 @@ This is the human-edited model policy.
 
 After editing:
 
+Windows:
+
+```powershell
+.\scripts\reconfigure.ps1
+```
+
+Linux:
+
 ```bash
 ./scripts/reconfigure.sh
 ```
@@ -65,7 +111,7 @@ It includes:
 - enabled remote aliases whose required environment variables are present;
 - the LiteLLM master key configuration.
 
-## Headroom
+## Headroom -> LiteLLM
 
 Each Headroom instance points at LiteLLM through:
 
@@ -73,4 +119,4 @@ Each Headroom instance points at LiteLLM through:
 OPENAI_TARGET_API_URL=http://litellm:4000
 ```
 
-The project defaults to Headroom telemetry off and uses the `balanced` savings profile. Output shaping is off by default and can be enabled independently. Each client mounts a separate persistent `.headroom` directory under `data/headroom/<client>/`.
+Each client mounts a separate persistent `.headroom` directory under `data/headroom/<client>/`.

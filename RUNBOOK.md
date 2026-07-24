@@ -2,6 +2,14 @@
 
 ## Start
 
+Windows:
+
+```powershell
+.\scripts\start.ps1
+```
+
+Linux:
+
 ```bash
 ./scripts/start.sh
 ```
@@ -14,15 +22,27 @@ docker compose --profile all-clients up -d
 
 ## Stop
 
+Windows:
+
+```powershell
+.\scripts\stop.ps1
+```
+
+Linux:
+
 ```bash
 ./scripts/stop.sh
 ```
 
-This stops the Compose stack. It intentionally leaves the physical Ollama server running on `11435` unless `restore.sh` is used.
-
 ## Health sequence
 
-Run:
+Windows:
+
+```powershell
+.\scripts\doctor.ps1
+```
+
+Linux:
 
 ```bash
 ./scripts/doctor.sh
@@ -32,12 +52,46 @@ Manual order:
 
 1. Physical Ollama: `http://127.0.0.1:11435/api/tags`
 2. LiteLLM: `http://127.0.0.1:4000/health/liveliness`
-3. Headroom/Cline: `http://127.0.0.1:8790/health`
+3. Headroom/Cline readiness: `http://127.0.0.1:8790/readyz`
 4. Facade: `http://127.0.0.1:11434/health`
 5. Facade model list: `http://127.0.0.1:11434/api/tags`
-6. End-to-end smoke completion.
+6. Docker -> physical Ollama connectivity
+7. Headroom Docker health status
+8. End-to-end smoke completion
 
 A failure at step N normally makes later steps unreliable. Fix the first failing layer.
+
+## Headroom health
+
+All Headroom containers listen internally on `8787`. Host-side ports remain client-specific.
+
+For Cline:
+
+```text
+127.0.0.1:8790 -> headroom-cline:8787
+```
+
+This is intentional because Headroom's built-in image healthcheck probes `127.0.0.1:8787/readyz` **inside the container**.
+
+After startup:
+
+```powershell
+docker compose ps
+```
+
+`headroom-cline` should eventually report:
+
+```text
+healthy
+```
+
+The proxy startup log should report:
+
+```text
+Mode: cache
+```
+
+when `HEADROOM_SAVINGS_PROFILE=coding` is active.
 
 ## Logs
 
@@ -47,7 +101,7 @@ docker compose logs -f headroom-cline
 docker compose logs -f litellm
 ```
 
-Managed host Ollama log:
+Managed host Ollama logs:
 
 ```text
 .state/ollama.stdout.log
@@ -58,6 +112,14 @@ Managed host Ollama log:
 
 After changing `config/models.json`, installing/removing an Ollama model, or changing `OPENROUTER_API_KEY`:
 
+Windows:
+
+```powershell
+.\scripts\reconfigure.ps1
+```
+
+Linux:
+
 ```bash
 ./scripts/reconfigure.sh
 ```
@@ -66,39 +128,40 @@ This regenerates LiteLLM configuration and restarts the routing services.
 
 ## Bypass Headroom for diagnosis
 
-The facade normally calls Headroom. To isolate Headroom, temporarily set in `.env`:
+The facade normally calls Headroom. To isolate it temporarily set:
 
 ```dotenv
 GATEWAY_UPSTREAM_URL=http://litellm:4000
 ```
 
-Then restart the gateway. This is diagnostic only; normal operation should route through Headroom.
+Then recreate the gateway. This is diagnostic only.
 
 ## Validate physical Ollama directly
 
-Because the persistent user `OLLAMA_HOST` is `127.0.0.1:11435`, a new shell makes the Ollama CLI talk directly to physical Ollama. This is independent of the managed server process using a Docker-reachable bind:
+A new Windows shell inherits:
 
-```bash
+```text
+OLLAMA_HOST=127.0.0.1:11435
+```
+
+so:
+
+```powershell
 ollama list
 ollama ps
 ```
 
-Or explicitly:
-
-```bash
-export OLLAMA_HOST=127.0.0.1:11435
-ollama list
-```
-
-## Update upstreams
-
-```bash
-./scripts/update.sh
-```
-
-The script fetches upstream refs, reports available tags and only moves a pinned ref when explicitly requested. See `docs/UPSTREAMS.md`.
+talk directly to physical Ollama.
 
 ## Restore workstation Ollama settings
+
+Windows:
+
+```powershell
+.\scripts\restore.ps1
+```
+
+Linux:
 
 ```bash
 ./scripts/restore.sh
@@ -106,13 +169,29 @@ The script fetches upstream refs, reports available tags and only moves a pinned
 
 Use this before permanently removing Cofer One IA.
 
-## Incident: port 11434 already in use
+## Incident: Headroom works but Docker reports unhealthy
 
-Check:
+Check the effective Compose mapping:
 
-```bash
-netstat -tlnp 2>/dev/null | grep :11434 || ss -tlnp 2>/dev/null | grep :11434
+```powershell
+docker compose config
 ```
+
+The Cline service must map:
+
+```text
+host 8790 -> container 8787
+```
+
+and its command must use:
+
+```text
+--port 8787
+```
+
+If it listens internally on `8790`, Headroom's image healthcheck probes the wrong port and Docker marks the otherwise-working container unhealthy.
+
+## Incident: port 11434 already in use
 
 The most common cause is physical Ollama still running on its default port. Run bootstrap again or stop/restart Ollama after the `OLLAMA_HOST` change.
 
@@ -120,9 +199,9 @@ The most common cause is physical Ollama still running on its default port. Run 
 
 Check `/api/tags` on `11434`. If empty:
 
-1. run `scripts/reconfigure.sh`;
+1. reconfigure;
 2. confirm physical Ollama has chat models;
-3. confirm OpenRouter key if only remote models are expected;
+3. confirm OpenRouter credentials if only remote models are expected;
 4. inspect LiteLLM logs.
 
 ## Incident: local model appears but requests fail

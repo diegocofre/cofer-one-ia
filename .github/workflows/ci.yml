@@ -12,15 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
       - name: Install gateway test dependencies
         run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
+
       - name: Compile Python
         run: python -m compileall services/ollama-gateway/app tools
+
       - name: Gateway tests
         run: python -m pytest services/ollama-gateway/tests
+
+      - name: Build gateway container
+        run: docker build -t cofer-one-ia-gateway-ci services/ollama-gateway
+
       - name: Validate config generator offline
         run: |
           cp .env.example .env
@@ -32,9 +40,79 @@ jobs:
           assert isinstance(data.get('model_list'), list)
           assert 'general_settings' in data
           PY
+
       - name: Validate JSON
         run: python -m json.tool config/models.json >/dev/null && python -m json.tool upstreams.lock.json >/dev/null
+
       - name: Validate shell syntax
         run: bash -n scripts/*.sh
-      - name: Validate Compose syntax
-        run: docker compose --env-file .env -f compose.yaml config >/dev/null
+
+      - name: Validate Compose syntax and Headroom port contract
+        run: |
+          docker compose --env-file .env -f compose.yaml config >/dev/null
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          compose = yaml.safe_load(Path("compose.yaml").read_text())
+          names = [
+              "headroom-cline",
+              "headroom-codex",
+              "headroom-opencode",
+              "headroom-zcode",
+              "headroom-continue",
+          ]
+
+          for name in names:
+              service = compose["services"][name]
+              command = service["command"]
+              assert command[-2:] == ["--port", "8787"], (name, command)
+              assert any(str(port).endswith(":8787") for port in service["ports"]), (name, service["ports"])
+
+          gateway_env = compose["services"]["gateway"]["environment"]
+          assert "headroom-cline:8787" in gateway_env["GATEWAY_UPSTREAM_URL"]
+          PY
+
+  windows-scripts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem .\scripts\*.ps1 | ForEach-Object {
+              $tokens = $null
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  $_.FullName,
+                  [ref]$tokens,
+                  [ref]$errors
+              ) | Out-Null
+
+              if ($errors.Count -gt 0) {
+                  Write-Host "PowerShell parse errors in $($_.Name):"
+                  $errors | ForEach-Object { Write-Host "  $($_.Message)" }
+                  $failed = $true
+              }
+          }
+
+          if ($failed) {
+              throw "PowerShell syntax validation failed."
+          }
+
+      - name: Validate Python launcher helper
+        shell: pwsh
+        run: |
+          . .\scripts\_common.ps1
+          $cmd = @(Get-PythonInvocation)
+          if ($cmd.Count -lt 1) {
+              throw "Get-PythonInvocation returned no executable."
+          }
+          Write-Host "Selected launcher: $($cmd -join ' ')"
+          Invoke-Python --version
