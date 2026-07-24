@@ -272,11 +272,11 @@ async def _handle(body: dict[str, Any], generate: bool) -> JSONResponse | Stream
     return JSONResponse(_nonstream_ollama(body["model"], data, generate))
 
 
-@app.post("/api/chat")
+@app.post("/api/chat", response_model=None)
 async def chat(request: Request) -> JSONResponse | StreamingResponse:
     return await _handle(await request.json(), generate=False)
 
 
-@app.post("/api/generate")
+@app.post("/api/generate", response_model=None)
 async def generate(request: Request) -> JSONResponse | StreamingResponse:
     return await _handle(await request.json(), generate=True)

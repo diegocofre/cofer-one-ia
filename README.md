@@ -17,7 +17,7 @@ Cofer One IA Gateway :11434
         v
 Headroom / Cline :8790
         |
-        | context compression + CacheAligner + stats
+        | context compression + cache-oriented coding profile + stats
         v
 LiteLLM :4000
        / \
@@ -31,7 +31,7 @@ Ollama    OpenRouter
 Responsibilities are intentionally separated:
 
 - **Ollama Gateway**: protocol facade. It exposes `/api/tags`, `/api/chat`, `/api/generate`, `/api/show` and converts Ollama traffic to OpenAI-compatible traffic.
-- **Headroom**: context optimization, cache alignment and per-client statistics.
+- **Headroom**: context optimization, cache alignment and per-client statistics. The default `coding` savings profile is intentionally cache-oriented.
 - **LiteLLM**: logical model catalog and provider routing.
 - **Physical Ollama**: the existing host installation, moved from `11434` to `11435`.
 - **OpenRouter**: optional remote model provider.
@@ -59,33 +59,45 @@ Primary supported workstation setup:
 - Git
 - Docker Desktop / Docker Engine with Compose v2
 - Ollama already installed on the host
-- Python 3.11+ for the bootstrap/config tooling
+- Python 3.11+ for bootstrap/config tooling
 - Optional: an OpenRouter API key
 
 Ollama remains native on the host so it can use the existing GPU runtime and already-downloaded models.
 
 ## Quick start
 
-Extract or clone the repository and run:
+### Windows
+
+Run from PowerShell:
+
+```powershell
+cd cofer-one-ia
+.\scripts\bootstrap.ps1
+```
+
+The Windows bootstrap:
+
+1. validates Docker, Python, Git and Ollama;
+2. saves the previous user-level `OLLAMA_HOST`;
+3. sets the Ollama CLI endpoint to `127.0.0.1:11435`;
+4. starts the physical Ollama server with a Docker-reachable `0.0.0.0:11435` bind;
+5. discovers local Ollama models;
+6. generates the LiteLLM catalog;
+7. starts the Docker stack;
+8. runs health checks and a **local-first** smoke test.
+
+Open a new terminal after bootstrap before using the `ollama` CLI.
+
+### Linux
 
 ```bash
 cd cofer-one-ia
 ./scripts/bootstrap.sh
 ```
 
-The bootstrap:
+See [Installation](docs/INSTALLATION.md) for systemd configuration.
 
-1. validates Docker, Python, Git and Ollama;
-2. backs up the current user-level `OLLAMA_HOST` value;
-3. moves the physical Ollama service to port `11435` while keeping the local CLI endpoint at `127.0.0.1:11435`;
-4. starts/restarts a managed Ollama server with a Docker-reachable bind when required;
-5. discovers installed local Ollama chat models;
-6. generates `config/generated/litellm.yaml`;
-7. leaves upstream source checkouts optional unless requested or source mode is used;
-8. starts the Docker stack;
-9. runs health checks and smoke tests.
-
-Then configure Cline:
+## Configure Cline
 
 ```text
 Provider: Ollama
@@ -102,7 +114,15 @@ Edit `.env`:
 OPENROUTER_API_KEY=sk-or-...
 ```
 
-Then regenerate and restart:
+Then regenerate and restart.
+
+Windows:
+
+```powershell
+.\scripts\reconfigure.ps1
+```
+
+Linux:
 
 ```bash
 ./scripts/reconfigure.sh
@@ -114,19 +134,7 @@ The repository ships with one remote logical model:
 openrouter-auto -> OpenRouter Auto Router
 ```
 
-Add explicit cloud aliases in `config/models.json`. Example:
-
-```json
-{
-  "name": "coder-best",
-  "provider": "openrouter",
-  "model": "anthropic/your-model-slug",
-  "enabled": true,
-  "requires_env": ["OPENROUTER_API_KEY"]
-}
-```
-
-The value in `model` is the OpenRouter model slug. The generator adds LiteLLM's `openrouter/` provider prefix automatically.
+Add explicit cloud aliases in `config/models.json`.
 
 ## Local models
 
@@ -152,7 +160,19 @@ Embedding models are excluded from the chat list by default.
 
 ## Daily commands
 
-Windows:
+Windows PowerShell:
+
+```powershell
+.\scripts\start.ps1
+.\scripts\stop.ps1
+.\scripts\status.ps1
+.\scripts\doctor.ps1
+.\scripts\smoke-test.ps1
+.\scripts\reconfigure.ps1
+.\scripts\update.ps1
+```
+
+Linux:
 
 ```bash
 ./scripts/start.sh
@@ -160,7 +180,15 @@ Windows:
 ./scripts/status.sh
 ./scripts/doctor.sh
 ./scripts/smoke-test.sh
+./scripts/reconfigure.sh
 ./scripts/update.sh
+```
+
+The smoke test is local-first by default. Remote inference must be requested explicitly:
+
+```powershell
+.\scripts\smoke-test.ps1 -Remote
+.\scripts\smoke-test.ps1 -Model openrouter-auto
 ```
 
 ## Headroom client isolation
@@ -173,43 +201,44 @@ docker compose --profile all-clients up -d
 
 This yields independent savings/state per client while all instances route through the same LiteLLM model layer.
 
-## Migrating an existing Headroom setup
-
-Cofer One IA owns port `8790` for its Cline-specific Headroom instance. If you already run Headroom for Cline on that port, stop the old instance before bootstrap. The installer does not kill or reconfigure unrelated Headroom containers automatically.
-
-The new managed state lives under `data/headroom/cline/`. Existing Headroom state can be copied there only when it is compatible with the selected Headroom version; otherwise start with a clean directory and keep the old data as a backup.
-
 ## Upstream repositories
 
-`upstreams.lock.json` pins known upstream refs for:
+`upstreams.lock.json` pins source refs for:
 
 - `headroomlabs-ai/headroom`
 - `BerriAI/litellm`
 
-`tools/upstreams.py` supports two modes:
+Runtime images are also version-pinned in `.env.example`. Source mode remains available for audited builds.
 
-- inside a Git repository: register the upstreams as actual Git submodules;
-- from a downloaded ZIP: create managed nested Git checkouts.
+If this repository was initially published without submodules, register them once:
 
-For a new public GitHub repository, run `./scripts/repo-init.sh` before the first commit so the upstreams become real submodules.
-
-Default runtime uses version-pinned Headroom and LiteLLM images for a fast, reproducible install. Matching source refs live in `upstreams.lock.json`; use source mode when you need an audited build directly from those refs. To build from those pinned source checkouts:
-
-```bash
-./scripts/start-source.sh
+```powershell
+.\scripts\repo-init.ps1
+git submodule status
+git status
 ```
 
-See [docs/UPSTREAMS.md](docs/UPSTREAMS.md).
+Commit `.gitmodules` and the two gitlinks afterward.
+
+See [Upstream management](docs/UPSTREAMS.md).
 
 ## Safe rollback
 
-The installer records the previous Ollama host configuration under `.state/`.
+Windows:
+
+```powershell
+.\scripts\restore.ps1
+```
+
+This stops Cofer One IA, restores the pre-install user `OLLAMA_HOST`, and stops the managed physical Ollama process.
+
+Linux:
 
 ```bash
 ./scripts/restore.sh
 ```
 
-This stops Cofer One IA, restores the previous `OLLAMA_HOST` user variable and stops the Ollama server process started by Cofer One IA.
+Linux systemd overrides remain intentionally operator-managed.
 
 ## Documentation
 

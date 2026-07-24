@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
 
   headroom-cline:
-    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom@sha256:50b85d8e320cfcdf1b38919bb7ae067b93ff7a8de0a93f05b2c1246370200d1c}
     command: ["--host", "0.0.0.0", "--port", "8790"]
     environment:
       <<: *headroom-env
@@ -56,7 +56,7 @@ services:
 
   headroom-codex:
     profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom@sha256:50b85d8e320cfcdf1b38919bb7ae067b93ff7a8de0a93f05b2c1246370200d1c}
     command: ["--host", "0.0.0.0", "--port", "8787"]
     environment:
       <<: *headroom-env
@@ -70,7 +70,7 @@ services:
 
   headroom-opencode:
     profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom@sha256:50b85d8e320cfcdf1b38919bb7ae067b93ff7a8de0a93f05b2c1246370200d1c}
     command: ["--host", "0.0.0.0", "--port", "8788"]
     environment:
       <<: *headroom-env
@@ -84,7 +84,7 @@ services:
 
   headroom-zcode:
     profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom@sha256:50b85d8e320cfcdf1b38919bb7ae067b93ff7a8de0a93f05b2c1246370200d1c}
     command: ["--host", "0.0.0.0", "--port", "8789"]
     environment:
       <<: *headroom-env
@@ -98,7 +98,7 @@ services:
 
   headroom-continue:
     profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom:latest}
+    image: ${HEADROOM_IMAGE:-ghcr.io/chopratejas/headroom@sha256:50b85d8e320cfcdf1b38919bb7ae067b93ff7a8de0a93f05b2c1246370200d1c}
     command: ["--host", "0.0.0.0", "--port", "8791"]
     environment:
       <<: *headroom-env

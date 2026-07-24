@@ -1,23 +1,30 @@
 # Publishing as a GitHub Repository
 
-The downloadable project intentionally does not embed the full Headroom and LiteLLM histories. Initialize the Git repository before the first public commit so both upstreams become proper Git submodules.
+Headroom and LiteLLM should be represented as true Git submodules in the public repository.
 
-```bash
-cd cofer-one-ia
-./scripts/repo-init.sh
+## Register submodules
 
-git status
-git add .
-git commit -m "Initial Cofer One IA release"
-```
+Windows PowerShell:
 
-Then create the GitHub repository and push normally.
-
-After initialization, verify:
-
-```bash
+```powershell
+.\scripts\repo-init.ps1
 git submodule status
+git status
 ```
+
+Linux/macOS:
+
+```bash
+./scripts/repo-init.sh
+git submodule status
+git status
+```
+
+Commit the resulting:
+
+- `.gitmodules`
+- `upstream/headroom` gitlink
+- `upstream/litellm` gitlink
 
 A normal clone should then use:
 
@@ -25,7 +32,7 @@ A normal clone should then use:
 git clone --recurse-submodules <repository-url>
 ```
 
-or, after an ordinary clone:
+or:
 
 ```bash
 git submodule update --init --recursive
@@ -33,7 +40,18 @@ git submodule update --init --recursive
 
 ## Before tagging a release
 
-Run the unit/config checks and, on a machine with Ollama + Docker, the end-to-end smoke test:
+Run unit/config checks and, on a machine with Ollama + Docker, end-to-end validation.
+
+Windows:
+
+```powershell
+python -m compileall services/ollama-gateway/app tools
+python -m pytest services/ollama-gateway/tests
+.\scripts\doctor.ps1
+.\scripts\smoke-test.ps1
+```
+
+Linux:
 
 ```bash
 python -m compileall services/ollama-gateway/app tools
@@ -42,4 +60,15 @@ python -m pytest services/ollama-gateway/tests
 ./scripts/smoke-test.sh
 ```
 
-For an upstream bump, also test source mode before changing the lock file in a release commit.
+Remote-provider smoke tests should be run explicitly rather than as the default validation path.
+
+For every upstream bump:
+
+1. update `upstreams.lock.json`;
+2. update the matching runtime image pin in `.env.example`/Compose;
+3. initialize/sync the source checkout;
+4. test source mode;
+5. run gateway and end-to-end tests;
+6. commit the source ref and image pin together.
+
+Never publish a release with `latest` as a default third-party runtime image.

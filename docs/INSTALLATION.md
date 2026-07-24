@@ -8,7 +8,7 @@ Install Git, Docker Desktop, Python 3.11+ and Ollama. Pull at least one local ch
 
 Verify:
 
-```bash
+```powershell
 git --version
 docker version
 docker compose version
@@ -19,50 +19,91 @@ ollama list
 
 ### Bootstrap
 
-```bash
-./scripts/bootstrap.sh
-```
+Run from PowerShell:
 
-The scripts accept any working Python 3 launcher: `python3`, `python`, or `py -3`.
+```powershell
+.\scripts\bootstrap.ps1
+```
 
 Optional flags:
 
-```bash
-# Also initialize the pinned Headroom/LiteLLM source checkouts.
-./scripts/bootstrap.sh --with-upstreams
+```powershell
+# Also initialize pinned Headroom/LiteLLM source checkouts.
+.\scripts\bootstrap.ps1 -WithUpstreams
 
 # Start every dedicated Headroom client instance.
-./scripts/bootstrap.sh --all-clients
+.\scripts\bootstrap.ps1 -AllClients
+
+# Build Headroom/LiteLLM from pinned source checkouts.
+.\scripts\bootstrap.ps1 -Source
 ```
 
 ### What changes on the host
 
-The installer saves the pre-install user `OLLAMA_HOST` value and then sets:
+The installer saves the current **user-level** `OLLAMA_HOST` value under:
+
+```text
+.state/ollama-host-before.json
+```
+
+It then persistently sets:
 
 ```text
 OLLAMA_HOST=127.0.0.1:11435
 ```
 
-It does not move or duplicate Ollama model files. On Windows, the persistent user value stays loopback-only so normal commands such as `ollama list` keep using `127.0.0.1:11435`. When Cofer One IA starts the physical server, that child process is launched with `OLLAMA_HOST=0.0.0.0:11435` so Docker can reach it through `host.docker.internal`.
+This keeps the normal Ollama CLI pointed at the physical Ollama runtime rather than the virtual facade on `11434`.
 
-The installer stops an incompatible Ollama listener and starts a managed `ollama serve` on `11435` when necessary. Its PID and logs are written under `.state/`. Because the server bind is Docker-reachable, use Windows Firewall to prevent untrusted LAN access to TCP `11435` if your network profile would otherwise allow it.
+For the physical server process only, Cofer One IA launches:
+
+```text
+OLLAMA_HOST=0.0.0.0:11435
+```
+
+so Docker can reach it through `host.docker.internal`.
+
+No model files are moved or duplicated.
+
+After bootstrap, open a **new terminal** before using commands such as:
+
+```powershell
+ollama list
+ollama pull <model>
+ollama rm <model>
+ollama ps
+```
+
+Those commands should now operate on the physical runtime at `127.0.0.1:11435`.
+
+### Network note
+
+The managed physical Ollama server listens on `0.0.0.0:11435` so Docker Desktop can reach it. Use Windows Firewall to block untrusted LAN access to TCP `11435`.
+
+The public Cofer One IA facade remains bound to `127.0.0.1:11434` by default.
 
 ### Restore
 
-```bash
-./scripts/restore.sh
+```powershell
+.\scripts\restore.ps1
 ```
+
+This:
+
+1. stops Cofer One IA containers;
+2. stops the Ollama server started by Cofer One IA;
+3. restores the exact pre-install user-level `OLLAMA_HOST`;
+4. leaves normal Ollama restart to the installed Ollama application/service.
+
+Open a new terminal after restore.
 
 ## Linux
 
-The shell scripts support a user-managed `ollama serve`. If Ollama is managed by systemd, configure its service explicitly before running bootstrap:
+The shell scripts support a user-managed `ollama serve`. If Ollama is managed by systemd, configure its service explicitly before bootstrap:
 
 ```ini
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11435"
 ```
-
-On a normal Linux Docker Engine, the container must be able to reach the host service; binding only to loopback is usually insufficient. Restrict port `11435` with the host firewall if the machine is on an untrusted network.
 
 Then:
 
@@ -72,24 +113,40 @@ sudo systemctl restart ollama
 ./scripts/bootstrap.sh
 ```
 
-The project does not silently edit system-wide systemd units.
+A normal Linux Docker Engine must be able to reach the host service; loopback-only binding is usually insufficient. Restrict port `11435` with the host firewall on untrusted networks.
 
-## From a ZIP versus Git clone
+The project intentionally does not edit system-wide systemd units.
 
-A ZIP cannot carry Git submodule gitlinks without also carrying repository metadata. The project therefore supports both cases:
+## Registering upstream submodules
 
-- Git checkout: upstream initializer registers true submodules.
-- ZIP: upstream initializer creates nested Git checkouts from `upstreams.lock.json`.
+A ZIP cannot carry Git gitlinks. If the repository was originally created from the downloadable bundle and published before registering submodules, run once:
 
-Before publishing a freshly extracted ZIP as a new GitHub repo, use:
-
-```bash
-./scripts/repo-init.sh
+```powershell
+.\scripts\repo-init.ps1
+git submodule status
+git status
 ```
 
-This initializes Git and registers the upstreams as proper submodules.
+Then commit:
 
+- `.gitmodules`
+- `upstream/headroom` gitlink
+- `upstream/litellm` gitlink
+
+Future clones can then use:
+
+```bash
+git clone --recurse-submodules <repository-url>
+```
 
 ## Existing Headroom installation
 
-If another Headroom proxy already owns port `8790`, stop it before bootstrap. Cofer One IA does not stop arbitrary containers or processes automatically. Back up any existing Headroom state before migrating it into `data/headroom/cline/`.
+Cofer One IA owns port `8790` for its Cline-specific Headroom instance. Stop an existing proxy using that port before bootstrap.
+
+Managed state lives under:
+
+```text
+data/headroom/cline/
+```
+
+Only migrate old Headroom state after confirming compatibility with the pinned Headroom version.
