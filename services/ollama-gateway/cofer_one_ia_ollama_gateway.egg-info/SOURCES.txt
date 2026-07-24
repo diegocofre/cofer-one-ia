@@ -1,0 +1,11 @@
+pyproject.toml
+app/__init__.py
+app/config.py
+app/main.py
+app/translation.py
+cofer_one_ia_ollama_gateway.egg-info/PKG-INFO
+cofer_one_ia_ollama_gateway.egg-info/SOURCES.txt
+cofer_one_ia_ollama_gateway.egg-info/dependency_links.txt
+cofer_one_ia_ollama_gateway.egg-info/requires.txt
+cofer_one_ia_ollama_gateway.egg-info/top_level.txt
+tests/test_translation.py

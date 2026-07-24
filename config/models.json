@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "local_ollama": {
+    "expose_all": true,
+    "exclude_patterns": ["*embed*"],
+    "name_prefix": ""
+  },
+  "models": [
+    {
+      "name": "openrouter-auto",
+      "provider": "openrouter",
+      "model": "openrouter/auto",
+      "enabled": true,
+      "requires_env": ["OPENROUTER_API_KEY"],
+      "description": "OpenRouter Auto Router. OpenRouter chooses the backing model."
+    }
+  ]
+}

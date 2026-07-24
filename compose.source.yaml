@@ -1,0 +1,52 @@
+# Source-build override. Requires initialized upstream/headroom and upstream/litellm.
+services:
+  litellm:
+    image: cofer-one-ia-litellm:source
+    build:
+      context: ./upstream/litellm
+      dockerfile: Dockerfile
+
+  headroom-cline:
+    image: cofer-one-ia-headroom:source
+    build:
+      context: ./upstream/headroom
+      dockerfile: Dockerfile
+      target: runtime-slim-base
+      args:
+        HEADROOM_BUILD_VERSION: source-build
+
+  headroom-codex:
+    image: cofer-one-ia-headroom:source
+    build:
+      context: ./upstream/headroom
+      dockerfile: Dockerfile
+      target: runtime-slim-base
+      args:
+        HEADROOM_BUILD_VERSION: source-build
+
+  headroom-opencode:
+    image: cofer-one-ia-headroom:source
+    build:
+      context: ./upstream/headroom
+      dockerfile: Dockerfile
+      target: runtime-slim-base
+      args:
+        HEADROOM_BUILD_VERSION: source-build
+
+  headroom-zcode:
+    image: cofer-one-ia-headroom:source
+    build:
+      context: ./upstream/headroom
+      dockerfile: Dockerfile
+      target: runtime-slim-base
+      args:
+        HEADROOM_BUILD_VERSION: source-build
+
+  headroom-continue:
+    image: cofer-one-ia-headroom:source
+    build:
+      context: ./upstream/headroom
+      dockerfile: Dockerfile
+      target: runtime-slim-base
+      args:
+        HEADROOM_BUILD_VERSION: source-build

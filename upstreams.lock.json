@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "upstreams": {
+    "headroom": {
+      "url": "https://github.com/headroomlabs-ai/headroom.git",
+      "ref": "v0.32.0",
+      "path": "upstream/headroom"
+    },
+    "litellm": {
+      "url": "https://github.com/BerriAI/litellm.git",
+      "ref": "v1.93.0",
+      "path": "upstream/litellm"
+    }
+  }
+}

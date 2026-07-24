@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install gateway test dependencies
+        run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
+      - name: Compile Python
+        run: python -m compileall services/ollama-gateway/app tools
+      - name: Gateway tests
+        run: python -m pytest services/ollama-gateway/tests
+      - name: Validate config generator offline
+        run: |
+          cp .env.example .env
+          python tools/generate_litellm_config.py --env .env --allow-ollama-offline
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+          data = yaml.safe_load(Path('config/generated/litellm.yaml').read_text())
+          assert isinstance(data.get('model_list'), list)
+          assert 'general_settings' in data
+          PY
+      - name: Validate JSON
+        run: python -m json.tool config/models.json >/dev/null && python -m json.tool upstreams.lock.json >/dev/null
+      - name: Validate shell syntax
+        run: bash -n scripts/*.sh
+      - name: Validate Compose syntax
+        run: docker compose --env-file .env -f compose.yaml config >/dev/null
