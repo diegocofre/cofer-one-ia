@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+set -euo pipefail
+
+PHYSICAL_OLLAMA_HOST="${COFER_PHYSICAL_OLLAMA_HOST:-http://127.0.0.1:11435}"
+
+if ! command -v ollama >/dev/null 2>&1; then
+  echo "collama: ollama was not found in PATH" >&2
+  exit 127
+fi
+
+export OLLAMA_HOST="$PHYSICAL_OLLAMA_HOST"
+exec ollama "$@"
