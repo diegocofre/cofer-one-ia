@@ -6,6 +6,8 @@
 .state/
 data/headroom/*/*
 !data/headroom/*/.gitkeep
+data/litellm/chatgpt/*
+!data/litellm/chatgpt/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
 config/generated/*

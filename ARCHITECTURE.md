@@ -1,91 +1,68 @@
 # Architecture
 
-## Design goal
+## Goal
 
-Clients should select a logical model without knowing whether inference is local or remote. Routing changes must not require client reconfiguration.
+Cofer One IA provides a stable, client-neutral inference surface. Clients select logical models; provider choice remains behind the gateway.
 
-## Request path
-
-### Cline
+## Normal path
 
 ```text
-Cline
-  -> Ollama facade :11434
-  -> Headroom/Cline :8790
-  -> LiteLLM :4000
-  -> provider
-       -> physical Ollama :11435
-       -> OpenRouter
+clients
+  -> :11434 universal gateway
+       -> Headroom gateway :8787 internal / :8790 host diagnostics
+            -> LiteLLM :4000
+                 -> physical Ollama :11435
+                 -> OpenRouter
+                 -> ChatGPT subscription OAuth
+                 -> future LiteLLM providers
 ```
 
-### Other OpenAI-compatible clients
+The gateway supports three public protocol families:
+
+- Ollama: `/api/tags`, `/api/show`, `/api/chat`, `/api/generate`, `/api/ps`, `/api/version`.
+- OpenAI: `/v1/models`, `/v1/chat/completions`, `/v1/responses`.
+- Anthropic: `/v1/messages`.
+
+OpenAI and Anthropic payloads are passed through Headroom without semantic rewriting. Ollama chat/generate payloads are translated to OpenAI Chat Completions because the Ollama wire format differs.
+
+## Routing authority
+
+LiteLLM is the sole provider-routing authority. The gateway does not infer providers from model names. `/api/tags` and `/v1/models` are derived from LiteLLM's model catalog.
+
+`tools/generate_litellm_config.py` builds that catalog from:
+
+1. physical Ollama `/api/tags`;
+2. static routes in `config/models.json`;
+3. optional `CHATGPT_MODELS` aliases from `.env`.
+
+## Authentication boundaries
+
+Normal client credentials are not forwarded upstream. The gateway authenticates to Headroom/LiteLLM with the internal LiteLLM master key. Protocol headers such as Anthropic version/beta headers are preserved.
+
+LiteLLM ChatGPT subscription mode owns a separate device-OAuth token store mounted at `data/litellm/chatgpt`. It does not reuse Codex credentials.
+
+## Direct Codex path
 
 ```text
-Codex/OpenCode/ZCode/Continue
-  -> dedicated Headroom port
-  -> LiteLLM :4000
-  -> provider
+Codex --profile cofer-direct
+  -> Headroom :8787
+       -> https://chatgpt.com/backend-api/codex
 ```
 
-The per-client Headroom split preserves independent statistics and persistent optimization state.
+This is deliberately independent from the normal router. The generated Codex profile uses Responses API and `requires_openai_auth = true`; Codex therefore remains responsible for its own ChatGPT authentication.
 
-## Model discovery
+## Persistence
 
-Cline requests the Ollama model catalog from `/api/tags`.
+- PostgreSQL named volume: LiteLLM Admin UI/gateway state.
+- `data/litellm/chatgpt`: LiteLLM-owned ChatGPT OAuth tokens; ignored by Git.
+- `data/headroom/gateway`: universal Headroom state.
+- `data/headroom/codex`: direct-Codex Headroom state.
+- `.state`: local migration/process/backup metadata; ignored by Git.
 
-The facade requests LiteLLM `/v1/models` and converts the returned model IDs into Ollama tag objects. Therefore the model selector is driven by the same catalog that actually routes inference.
+## Ollama environment policy
 
-`tools/generate_litellm_config.py` builds that catalog from two sources:
+Cofer One IA v0.2 never writes a new user-level `OLLAMA_HOST`. Plain Ollama therefore uses its normal `11434` default unless the user independently configured another value.
 
-1. installed physical Ollama models;
-2. explicit logical cloud aliases in `config/models.json`.
+Windows upgrades from v0.1.x restore the pre-install value only when `.state/ollama-host-before.json` proves Cofer ownership and the current value is still the old Cofer `11435` redirect. Unrelated user changes are preserved.
 
-## Protocol boundaries
-
-### Ollama facade
-
-Owns protocol conversion only. It does not choose providers.
-
-Supported initial endpoints:
-
-- `GET /api/tags`
-- `POST /api/chat`
-- `POST /api/generate`
-- `POST /api/show`
-- `GET /api/version`
-- `GET /health`
-
-Streaming conversion:
-
-```text
-OpenAI SSE -> Ollama newline-delimited JSON
-```
-
-### Headroom
-
-Headroom receives OpenAI-compatible requests after the Ollama protocol has been normalized. It applies context optimization and forwards the request to LiteLLM using `OPENAI_TARGET_API_URL`.
-
-### LiteLLM
-
-LiteLLM is the routing authority. A logical model name maps to exactly one configured deployment unless explicit LiteLLM fallbacks/load balancing are added later.
-
-### Physical Ollama
-
-Physical Ollama is deliberately outside Docker. This preserves the workstation's native Ollama installation, GPU integration and existing model storage.
-
-## Configuration authority
-
-- `.env`: secrets, ports and runtime image versions.
-- `config/models.json`: desired logical remote aliases and local discovery policy.
-- `config/generated/litellm.yaml`: generated artifact; never edit manually.
-- `upstreams.lock.json`: pinned third-party source refs.
-
-## Failure boundaries
-
-- facade unavailable: Cline cannot discover or call models;
-- Headroom unavailable: Cline path fails; bypass is available for diagnostics;
-- LiteLLM unavailable: all routed inference fails;
-- physical Ollama unavailable: only local routes fail;
-- OpenRouter unavailable/key missing: only OpenRouter routes fail.
-
-The runbook uses these boundaries to diagnose the stack from outside to inside.
+`collama` is the explicit direct-physical path and sets `OLLAMA_HOST=11435` only in the child process.

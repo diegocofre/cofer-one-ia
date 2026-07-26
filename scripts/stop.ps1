@@ -1,7 +1,5 @@
 . (Join-Path $PSScriptRoot "_common.ps1")
-
 Write-Step "Stopping Cofer One IA"
-Invoke-CoferCompose -AllClients down
+Invoke-CoferCompose -CodexDirect down
 Stop-ManagedOllama
-Write-Host "Cofer One IA stopped. OLLAMA_HOST remains configured for physical Ollama on 127.0.0.1:11435."
-Write-Host "Run .\scripts\restore.ps1 to restore the pre-install Ollama configuration."
+Write-Host "Cofer One IA stopped. No user-level OLLAMA_HOST setting was changed." -ForegroundColor Green

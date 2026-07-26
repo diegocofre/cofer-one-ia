@@ -1,16 +1,15 @@
 . (Join-Path $PSScriptRoot "_common.ps1")
 
 Write-Step "Stopping Cofer One IA"
-try { Invoke-CoferCompose -AllClients down } catch { Write-Warning $_.Exception.Message }
+try { Invoke-CoferCompose -CodexDirect down } catch { Write-Warning $_.Exception.Message }
 
 Write-Step "Stopping managed physical Ollama"
 Stop-ManagedOllama
-Stop-OllamaProcesses
 
-Write-Step "Restoring pre-install OLLAMA_HOST"
-Restore-PreviousOllamaHost
+Write-Step "Restoring Cofer-owned v0.1.x OLLAMA_HOST state, if present"
+$restored = Restore-PreviousOllamaHost
 
 Write-Host ""
-Write-Host "Previous Ollama host configuration restored." -ForegroundColor Green
-Write-Host "Restart the Ollama desktop application/service normally if it does not start automatically."
-Write-Host "Open a new terminal so it inherits the restored environment."
+if ($restored) { Write-Host "Previous Ollama host configuration restored." -ForegroundColor Green }
+else { Write-Host "No user OLLAMA_HOST value was changed." -ForegroundColor Green }
+Write-Host "The collama wrapper may remain installed; it never changes global OLLAMA_HOST."

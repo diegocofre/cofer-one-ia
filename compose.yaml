@@ -1,49 +1,78 @@
 name: cofer-one-ia
 
-x-headroom-env: &headroom-env
-  OPENAI_TARGET_API_URL: http://litellm:4000
-  OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+x-headroom-common: &headroom-common
   HEADROOM_TELEMETRY: ${HEADROOM_TELEMETRY:-off}
   HEADROOM_OUTPUT_SHAPER: ${HEADROOM_OUTPUT_SHAPER:-0}
   HEADROOM_SAVINGS_PROFILE: "${HEADROOM_SAVINGS_PROFILE:-coding}"
 
 services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+    volumes:
+      - litellm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   litellm:
     image: ${LITELLM_IMAGE:-ghcr.io/berriai/litellm:v1.93.0}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD}@postgres:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+      UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OLLAMA_BACKEND_URL: ${OLLAMA_BACKEND_URL:-http://host.docker.internal:11435}
+      CHATGPT_TOKEN_DIR: /app/chatgpt-auth
     volumes:
       - ./config/generated/litellm.yaml:/app/config.yaml:ro
+      - ./data/litellm/chatgpt:/app/chatgpt-auth
     ports:
       - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
-  # Every Headroom container listens on its native internal port 8787.
-  # The host-side port is what distinguishes each client instance.
-  headroom-cline:
+  # One client-neutral Headroom instance for all normal traffic.
+  headroom-gateway:
     image: ${HEADROOM_IMAGE:-ghcr.io/headroomlabs-ai/headroom:0.32.0}
     command: ["--host", "0.0.0.0", "--port", "8787"]
     environment:
-      <<: *headroom-env
+      <<: *headroom-common
+      OPENAI_TARGET_API_URL: http://litellm:4000
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
       HEADROOM_SAVINGS_PATH: /home/nonroot/.headroom/proxy_savings.json
     volumes:
-      - ./data/headroom/cline:/home/nonroot/.headroom
+      - ./data/headroom/gateway:/home/nonroot/.headroom
     ports:
-      - "127.0.0.1:${HEADROOM_CLINE_PORT:-8790}:8787"
+      - "127.0.0.1:${HEADROOM_GATEWAY_PORT:-8790}:8787"
     depends_on:
       - litellm
+    networks:
+      default:
+        aliases:
+          # v0.1.x compatibility for an existing GATEWAY_UPSTREAM_URL.
+          - headroom-cline
     restart: unless-stopped
 
   gateway:
     build:
       context: ./services/ollama-gateway
     environment:
-      GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:-http://headroom-cline:8787}
+      GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:-http://headroom-gateway:8787}
       LITELLM_URL: http://litellm:4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       GATEWAY_REQUEST_TIMEOUT_SECONDS: ${GATEWAY_REQUEST_TIMEOUT_SECONDS:-600}
@@ -53,61 +82,24 @@ services:
       - "${GATEWAY_HOST:-127.0.0.1}:${GATEWAY_PORT:-11434}:11434"
     depends_on:
       - litellm
-      - headroom-cline
+      - headroom-gateway
     restart: unless-stopped
 
+  # Optional escape hatch: Codex keeps its own ChatGPT OAuth and talks directly
+  # to Headroom. No LiteLLM master key or ChatGPT token is shared into this path.
   headroom-codex:
-    profiles: ["all-clients"]
+    profiles: ["codex-direct"]
     image: ${HEADROOM_IMAGE:-ghcr.io/headroomlabs-ai/headroom:0.32.0}
     command: ["--host", "0.0.0.0", "--port", "8787"]
     environment:
-      <<: *headroom-env
+      <<: *headroom-common
+      OPENAI_TARGET_API_URL: ${CODEX_CHATGPT_BASE_URL:-https://chatgpt.com/backend-api/codex}
       HEADROOM_SAVINGS_PATH: /home/nonroot/.headroom/proxy_savings.json
     volumes:
       - ./data/headroom/codex:/home/nonroot/.headroom
     ports:
       - "127.0.0.1:${HEADROOM_CODEX_PORT:-8787}:8787"
-    depends_on: [litellm]
     restart: unless-stopped
 
-  headroom-opencode:
-    profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/headroomlabs-ai/headroom:0.32.0}
-    command: ["--host", "0.0.0.0", "--port", "8787"]
-    environment:
-      <<: *headroom-env
-      HEADROOM_SAVINGS_PATH: /home/nonroot/.headroom/proxy_savings.json
-    volumes:
-      - ./data/headroom/opencode:/home/nonroot/.headroom
-    ports:
-      - "127.0.0.1:${HEADROOM_OPENCODE_PORT:-8788}:8787"
-    depends_on: [litellm]
-    restart: unless-stopped
-
-  headroom-zcode:
-    profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/headroomlabs-ai/headroom:0.32.0}
-    command: ["--host", "0.0.0.0", "--port", "8787"]
-    environment:
-      <<: *headroom-env
-      HEADROOM_SAVINGS_PATH: /home/nonroot/.headroom/proxy_savings.json
-    volumes:
-      - ./data/headroom/zcode:/home/nonroot/.headroom
-    ports:
-      - "127.0.0.1:${HEADROOM_ZCODE_PORT:-8789}:8787"
-    depends_on: [litellm]
-    restart: unless-stopped
-
-  headroom-continue:
-    profiles: ["all-clients"]
-    image: ${HEADROOM_IMAGE:-ghcr.io/headroomlabs-ai/headroom:0.32.0}
-    command: ["--host", "0.0.0.0", "--port", "8787"]
-    environment:
-      <<: *headroom-env
-      HEADROOM_SAVINGS_PATH: /home/nonroot/.headroom/proxy_savings.json
-    volumes:
-      - ./data/headroom/continue:/home/nonroot/.headroom
-    ports:
-      - "127.0.0.1:${HEADROOM_CONTINUE_PORT:-8791}:8787"
-    depends_on: [litellm]
-    restart: unless-stopped
+volumes:
+  litellm-postgres:

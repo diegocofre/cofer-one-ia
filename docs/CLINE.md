@@ -1,62 +1,28 @@
 # Cline Integration
 
-## IDE
+Cline remains supported, but it is no longer a special architectural path in v0.2.
 
-Open Cline settings and configure:
+## Configure
 
 ```text
 Provider: Ollama
 Base URL: http://127.0.0.1:11434
 ```
 
-Refresh the model list. The list comes from Cofer One IA, not directly from physical Ollama.
+Refresh the model list. It comes from the same LiteLLM logical catalog used by every other client.
 
-## Why this works
-
-Cline treats `11434` as an Ollama runtime. Cofer One IA implements the Ollama model-list and chat endpoints while routing inference internally through Headroom and LiteLLM.
-
-A selection such as:
+Cline `/api/chat` requests are translated by the gateway, then follow the universal route:
 
 ```text
-qwen3.5:9b
+Cline -> Gateway :11434 -> Headroom gateway -> LiteLLM -> provider
 ```
 
-can route to physical Ollama, while:
+Local physical Ollama, OpenRouter and optional ChatGPT subscription aliases can therefore be selected without changing Cline's provider configuration.
 
-```text
-openrouter-auto
-```
+## Context window and structured requests
 
-routes to OpenRouter. Cline uses the same provider configuration for both.
+The gateway preserves Cline's Ollama-specific request options such as `options.num_ctx`, tools, images, structured output and supported thinking/reasoning fields through the Ollama-to-OpenAI translation layer.
 
-## Cline CLI
+## Headroom diagnostics
 
-When the Cline CLI uses the same Ollama provider/base URL, automation can choose logical models without handling provider credentials in the orchestrator.
-
-Conceptually:
-
-```bash
-cline --provider ollama --model openrouter-auto --cwd ./repo "review this change"
-```
-
-CLI flags may evolve; check the installed Cline CLI version before hard-coding automation around its command-line surface.
-
-## Headroom statistics
-
-All facade inference for Cline goes through the Cline-specific Headroom instance:
-
-```text
-http://127.0.0.1:8790
-```
-
-Headroom health:
-
-```text
-http://127.0.0.1:8790/health
-```
-
-Dashboard availability depends on the Headroom version/runtime configuration.
-
-## Context window
-
-Cline uses Ollama's native `/api/chat` specifically so it can send `options.num_ctx` per request. The gateway preserves `num_ctx` through Headroom and LiteLLM; the default context advertised by the facade is 32768 tokens, matching Cline's current Ollama default. You can change `GATEWAY_DEFAULT_CONTEXT_LENGTH` in `.env` when you intentionally use a different model context.
+Cline shares the universal Headroom instance with normal traffic. Its host diagnostics endpoint is `http://127.0.0.1:8790`; Headroom no longer has a Cline-specific normal container.

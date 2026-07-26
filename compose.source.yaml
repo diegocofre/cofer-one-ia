@@ -6,9 +6,9 @@ services:
       context: ./upstream/litellm
       dockerfile: Dockerfile
 
-  headroom-cline:
+  headroom-gateway:
     image: cofer-one-ia-headroom:source
-    build:
+    build: &headroom-source-build
       context: ./upstream/headroom
       dockerfile: Dockerfile
       target: runtime-slim-base
@@ -17,36 +17,4 @@ services:
 
   headroom-codex:
     image: cofer-one-ia-headroom:source
-    build:
-      context: ./upstream/headroom
-      dockerfile: Dockerfile
-      target: runtime-slim-base
-      args:
-        HEADROOM_BUILD_VERSION: source-build
-
-  headroom-opencode:
-    image: cofer-one-ia-headroom:source
-    build:
-      context: ./upstream/headroom
-      dockerfile: Dockerfile
-      target: runtime-slim-base
-      args:
-        HEADROOM_BUILD_VERSION: source-build
-
-  headroom-zcode:
-    image: cofer-one-ia-headroom:source
-    build:
-      context: ./upstream/headroom
-      dockerfile: Dockerfile
-      target: runtime-slim-base
-      args:
-        HEADROOM_BUILD_VERSION: source-build
-
-  headroom-continue:
-    image: cofer-one-ia-headroom:source
-    build:
-      context: ./upstream/headroom
-      dockerfile: Dockerfile
-      target: runtime-slim-base
-      args:
-        HEADROOM_BUILD_VERSION: source-build
+    build: *headroom-source-build

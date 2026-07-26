@@ -14,7 +14,7 @@ def _int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class Settings:
-    headroom_url: str = os.getenv("GATEWAY_UPSTREAM_URL", "http://headroom-cline:8790").rstrip("/")
+    headroom_url: str = os.getenv("GATEWAY_UPSTREAM_URL", "http://headroom-gateway:8787").rstrip("/")
     litellm_url: str = os.getenv("LITELLM_URL", "http://litellm:4000").rstrip("/")
     litellm_master_key: str = os.getenv("LITELLM_MASTER_KEY", "")
     request_timeout_seconds: int = _int("GATEWAY_REQUEST_TIMEOUT_SECONDS", 600)

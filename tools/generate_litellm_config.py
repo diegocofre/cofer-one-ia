@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+SUPPORTED_PROVIDERS = {"openrouter", "ollama", "chatgpt"}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -39,11 +40,36 @@ def ollama_tags(url: str) -> list[str]:
 
 
 def quoted(value: str) -> str:
-    # JSON string quoting is valid YAML string syntax.
     return json.dumps(value, ensure_ascii=False)
 
 
-def build_model_list(policy: dict[str, Any], env: dict[str, str], local_models: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
+def parse_chatgpt_models(value: str) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for raw in value.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if "=" in raw:
+            logical, physical = (part.strip() for part in raw.split("=", 1))
+        else:
+            logical = physical = raw
+        if not logical or not physical:
+            raise ValueError(f"Invalid CHATGPT_MODELS entry: {raw!r}")
+        result.append(
+            {
+                "name": logical,
+                "provider": "chatgpt",
+                "model": physical,
+                "enabled": True,
+                "description": "ChatGPT subscription model via LiteLLM device OAuth",
+            }
+        )
+    return result
+
+
+def build_model_list(
+    policy: dict[str, Any], env: dict[str, str], local_models: list[str]
+) -> tuple[list[dict[str, Any]], list[str]]:
     result: list[dict[str, Any]] = []
     warnings: list[str] = []
     names: set[str] = set()
@@ -68,7 +94,8 @@ def build_model_list(policy: dict[str, Any], env: dict[str, str], local_models: 
                 }
             )
 
-    for item in policy.get("models") or []:
+    configured = list(policy.get("models") or []) + parse_chatgpt_models(env.get("CHATGPT_MODELS", ""))
+    for item in configured:
         if not item.get("enabled", True):
             continue
         missing = [name for name in item.get("requires_env") or [] if not env.get(name)]
@@ -83,8 +110,8 @@ def build_model_list(policy: dict[str, Any], env: dict[str, str], local_models: 
             raise ValueError(f"Duplicate logical model name: {logical_name}")
         provider = str(item.get("provider") or "").strip()
         model = str(item.get("model") or "").strip()
-        if provider not in {"openrouter", "ollama"}:
-            raise ValueError(f"Unsupported provider in v0.1 config: {provider!r}")
+        if provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(f"Unsupported provider: {provider!r}")
         if not model:
             raise ValueError(f"Configured model {logical_name!r} has no physical model id")
         names.add(logical_name)
@@ -93,10 +120,14 @@ def build_model_list(policy: dict[str, Any], env: dict[str, str], local_models: 
     return result, warnings
 
 
+def _prefix_once(value: str, prefix: str) -> str:
+    return value if value.startswith(prefix) else prefix + value
+
+
 def render(models: list[dict[str, Any]]) -> str:
     lines = [
         "# GENERATED FILE - DO NOT EDIT",
-        "# Source: config/models.json + physical Ollama /api/tags",
+        "# Source: config/models.json + physical Ollama /api/tags + CHATGPT_MODELS",
         "model_list:",
     ]
     if not models:
@@ -106,14 +137,29 @@ def render(models: list[dict[str, Any]]) -> str:
         lines.append(f"  - model_name: {quoted(item['name'])}")
         lines.append("    litellm_params:")
         if item["provider"] == "ollama":
-            lines.append(f"      model: {quoted('ollama_chat/' + item['model'])}")
+            lines.append(f"      model: {quoted(_prefix_once(item['model'], 'ollama_chat/'))}")
             lines.append("      api_base: os.environ/OLLAMA_BACKEND_URL")
         elif item["provider"] == "openrouter":
-            lines.append(f"      model: {quoted('openrouter/' + item['model'])}")
+            lines.append(f"      model: {quoted(_prefix_once(item['model'], 'openrouter/'))}")
             lines.append("      api_key: os.environ/OPENROUTER_API_KEY")
-        if item.get("description"):
+        elif item["provider"] == "chatgpt":
+            physical = item["model"]
+            if physical.startswith("chatgpt/responses/"):
+                target = physical
+            elif physical.startswith("chatgpt/"):
+                target = "chatgpt/responses/" + physical.removeprefix("chatgpt/")
+            elif physical.startswith("responses/"):
+                target = "chatgpt/" + physical
+            else:
+                target = "chatgpt/responses/" + physical
+            lines.append(f"      model: {quoted(target)}")
+            lines.append("      mode: responses")
+        if item.get("description") or item["provider"] == "chatgpt":
             lines.append("    model_info:")
-            lines.append(f"      description: {quoted(str(item['description']))}")
+            if item.get("description"):
+                lines.append(f"      description: {quoted(str(item['description']))}")
+            if item["provider"] == "chatgpt":
+                lines.append("      mode: responses")
 
     lines.extend(
         [
@@ -142,7 +188,6 @@ def main() -> int:
     env = load_env(Path(args.env))
     policy = json.loads(Path(args.policy).read_text(encoding="utf-8"))
     host = args.ollama_url or "http://127.0.0.1:11435"
-
     try:
         local_models = ollama_tags(host)
     except RuntimeError:
@@ -152,7 +197,6 @@ def main() -> int:
 
     models, warnings = build_model_list(policy, env, local_models)
     content = render(models)
-
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     print(f"Configured logical models: {', '.join(m['name'] for m in models) or '(none)'}", file=sys.stderr)
