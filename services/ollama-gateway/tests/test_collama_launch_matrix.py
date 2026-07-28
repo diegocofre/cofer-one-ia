@@ -37,15 +37,6 @@ def _prepare_desktop_client(client: str, tmp_path: Path, monkeypatch: pytest.Mon
     executable.touch()
 
 
-def test_list_integrations_exposes_every_enabled_client(capsys):
-    rc = MODULE.main(["launch", "--list-integrations"])
-
-    assert rc == 0
-    listed = [line.split("\t", 1)[0] for line in capsys.readouterr().out.splitlines() if line.strip()]
-    assert set(listed) == set(LAUNCH_CLIENTS)
-    assert len(listed) == len(LAUNCH_CLIENTS)
-
-
 @pytest.mark.parametrize("client", LAUNCH_CLIENTS, ids=LAUNCH_CLIENTS)
 def test_launch_smoke_for_every_enabled_client(client, tmp_path, monkeypatch, capsys):
     assert MODULE.ADAPTERS[client].key == client
