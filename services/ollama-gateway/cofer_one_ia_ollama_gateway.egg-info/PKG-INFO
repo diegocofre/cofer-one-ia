@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: cofer-one-ia-ollama-gateway
-Version: 0.2.0
-Summary: Ollama, OpenAI and Anthropic compatibility gateway for Cofer One IA
+Version: 0.1.0
+Summary: Ollama-compatible facade for Cofer One IA
 Requires-Python: >=3.11
 Requires-Dist: fastapi<1,>=0.115
 Requires-Dist: httpx<1,>=0.27
