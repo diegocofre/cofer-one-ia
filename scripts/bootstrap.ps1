@@ -64,11 +64,12 @@ if ($CodexDirect) {
 }
 
 Write-Host ""
-Write-Host "Cofer One IA v0.2.0 is ready." -ForegroundColor Green
-Write-Host "Universal gateway:  http://127.0.0.1:11434"
-Write-Host "LiteLLM dashboard:  http://127.0.0.1:4000/ui"
-Write-Host "Physical Ollama:    http://127.0.0.1:11435  (use collama)"
-Write-Host "Headroom gateway:   http://127.0.0.1:8790"
+Write-Host "Cofer One IA v0.3.0 is ready." -ForegroundColor Green
+Write-Host "Universal gateway:   http://127.0.0.1:11434"
+Write-Host "LiteLLM dashboard:   http://127.0.0.1:4000/ui"
+Write-Host "Physical Ollama:     http://127.0.0.1:11435  (use collama)"
+Write-Host "Headroom gateway:    http://127.0.0.1:8790"
+Write-Host "Cofer U Pass bridge: http://127.0.0.1:4011"
 Write-Host ""
 Write-Host "Examples:"
 Write-Host "  ollama list"
@@ -77,4 +78,5 @@ Write-Host "  ollama launch claude"
 Write-Host "  collama list"
 Write-Host ""
 Write-Host "Optional ChatGPT subscription provider: .\scripts\auth-chatgpt.ps1"
+Write-Host "Optional Cofer U Pass web models:       set COFER_U_PASS_MODELS, reconfigure, then run 'cofer-u-pass worker'"
 Write-Host "Optional direct Codex fallback:          .\scripts\codex-direct.ps1"

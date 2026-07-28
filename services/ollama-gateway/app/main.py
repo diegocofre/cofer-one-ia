@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .config import settings
+from .cupass import model_capabilities, proxy_bridge_request
 from .translation import (
     accumulate_tool_call,
     finalize_tool_calls,
@@ -22,7 +23,7 @@ from .translation import (
 )
 from .upstream import proxy_json_request, upstream_headers
 
-app = FastAPI(title="Cofer One IA Universal Gateway", version="0.2.0")
+app = FastAPI(title="Cofer One IA Universal Gateway", version="0.3.0")
 
 _model_cache: tuple[float, list[str]] = (0.0, [])
 _model_lock = asyncio.Lock()
@@ -44,7 +45,6 @@ async def _models(force: bool = False) -> list[str]:
     timestamp, cached = _model_cache
     if not force and cached and time.monotonic() - timestamp < settings.model_refresh_seconds:
         return cached
-
     async with _model_lock:
         timestamp, cached = _model_cache
         if not force and cached and time.monotonic() - timestamp < settings.model_refresh_seconds:
@@ -73,7 +73,7 @@ async def root() -> dict[str, Any]:
         "name": "cofer-one-ia",
         "service": "universal-gateway",
         "version": app.version,
-        "protocols": ["ollama", "openai", "anthropic"],
+        "protocols": ["ollama", "openai", "anthropic", "openai-files"],
         "base_url": "http://127.0.0.1:11434",
     }
 
@@ -97,16 +97,19 @@ async def health() -> dict[str, Any]:
     return {"status": "healthy" if ok else "degraded", "checks": checks}
 
 
-# ---------------------------------------------------------------------------
-# OpenAI-compatible surface used by Codex, OpenCode, Copilot CLI and others.
-# Headroom and LiteLLM already understand these native protocols, so the
-# gateway intentionally does not reinterpret their payloads.
-# ---------------------------------------------------------------------------
-
-
 @app.get("/v1/models")
 async def openai_models(refresh: bool = False) -> dict[str, Any]:
     return {"object": "list", "data": [_openai_model(name) for name in await _models(force=refresh)]}
+
+
+@app.get("/v1/models/{model:path}/capabilities")
+async def openai_model_capabilities(model: str) -> dict[str, Any]:
+    if model not in await _models():
+        raise HTTPException(status_code=404, detail=f"unknown model: {model}")
+    capabilities = model_capabilities(model)
+    if capabilities is None:
+        capabilities = {"text_input": True, "text_output": True, "tools": True}
+    return {"model": model, "capabilities": capabilities}
 
 
 @app.get("/v1/models/{model:path}")
@@ -114,6 +117,26 @@ async def openai_model(model: str) -> dict[str, Any]:
     if model not in await _models():
         raise HTTPException(status_code=404, detail=f"unknown model: {model}")
     return _openai_model(model)
+
+
+@app.post("/v1/files", response_model=None)
+async def openai_files_upload(request: Request) -> Response:
+    return await proxy_bridge_request(request, "/v1/files")
+
+
+@app.get("/v1/files/{file_id}", response_model=None)
+async def openai_file(file_id: str, request: Request) -> Response:
+    return await proxy_bridge_request(request, f"/v1/files/{file_id}")
+
+
+@app.get("/v1/files/{file_id}/content", response_model=None)
+async def openai_file_content(file_id: str, request: Request) -> Response:
+    return await proxy_bridge_request(request, f"/v1/files/{file_id}/content")
+
+
+@app.delete("/v1/files/{file_id}", response_model=None)
+async def openai_file_delete(file_id: str, request: Request) -> Response:
+    return await proxy_bridge_request(request, f"/v1/files/{file_id}")
 
 
 @app.post("/v1/chat/completions", response_model=None)
@@ -126,16 +149,9 @@ async def openai_responses(request: Request) -> Response:
     return await proxy_json_request(request, "/v1/responses")
 
 
-# Anthropic Messages API used by `ollama launch claude`.
 @app.post("/v1/messages", response_model=None)
 async def anthropic_messages(request: Request) -> Response:
     return await proxy_json_request(request, "/v1/messages")
-
-
-# ---------------------------------------------------------------------------
-# Ollama-compatible surface. This is the only protocol that needs translation
-# because Headroom/LiteLLM operate on OpenAI/Anthropic-native payloads.
-# ---------------------------------------------------------------------------
 
 
 @app.get("/api/version")
@@ -149,18 +165,11 @@ async def tags(refresh: bool = False) -> dict[str, Any]:
     return {
         "models": [
             {
-                "name": name,
-                "model": name,
-                "modified_at": _now(),
-                "size": 0,
+                "name": name, "model": name, "modified_at": _now(), "size": 0,
                 "digest": f"cofer-one-ia:{name}",
                 "details": {
-                    "parent_model": "",
-                    "format": "virtual",
-                    "family": "cofer-one-ia",
-                    "families": ["cofer-one-ia"],
-                    "parameter_size": "remote-or-local",
-                    "quantization_level": "unknown",
+                    "parent_model": "", "format": "virtual", "family": "cofer-one-ia",
+                    "families": ["cofer-one-ia"], "parameter_size": "remote-or-local", "quantization_level": "unknown",
                 },
             }
             for name in models
@@ -176,20 +185,17 @@ async def show(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="name/model is required")
     if name not in await _models():
         raise HTTPException(status_code=404, detail=f"unknown model: {name}")
+    capabilities = model_capabilities(name)
+    ollama_capabilities = ["completion"] if capabilities and not capabilities.get("tools", False) else ["completion", "tools"]
     return {
-        "license": "Provider/model specific",
-        "modelfile": "# Virtual model routed by Cofer One IA",
-        "parameters": "",
-        "template": "",
-        "details": {"family": "cofer-one-ia", "families": ["cofer-one-ia"]},
-        "model_info": {"cofer.context_length": settings.default_context_length},
-        "capabilities": ["completion", "tools"],
+        "license": "Provider/model specific", "modelfile": "# Virtual model routed by Cofer One IA",
+        "parameters": "", "template": "", "details": {"family": "cofer-one-ia", "families": ["cofer-one-ia"]},
+        "model_info": {"cofer.context_length": settings.default_context_length}, "capabilities": ollama_capabilities,
     }
 
 
 @app.get("/api/ps")
 async def ps() -> dict[str, list[Any]]:
-    # Logical/cloud routes do not have meaningful Ollama residency information.
     return {"models": []}
 
 
@@ -199,33 +205,20 @@ def _nonstream_ollama(model: str, response_json: dict[str, Any], generate: bool)
     usage = response_json.get("usage") or {}
     if generate:
         return {
-            "model": model,
-            "created_at": _now(),
-            "response": message.get("content") or "",
-            "done": True,
+            "model": model, "created_at": _now(), "response": message.get("content") or "", "done": True,
             "done_reason": choices[0].get("finish_reason") if choices else "stop",
-            "prompt_eval_count": usage.get("prompt_tokens", 0),
-            "eval_count": usage.get("completion_tokens", 0),
+            "prompt_eval_count": usage.get("prompt_tokens", 0), "eval_count": usage.get("completion_tokens", 0),
         }
     return {
-        "model": model,
-        "created_at": _now(),
-        "message": openai_message_to_ollama(message),
-        "done": True,
+        "model": model, "created_at": _now(), "message": openai_message_to_ollama(message), "done": True,
         "done_reason": choices[0].get("finish_reason") if choices else "stop",
-        "prompt_eval_count": usage.get("prompt_tokens", 0),
-        "eval_count": usage.get("completion_tokens", 0),
+        "prompt_eval_count": usage.get("prompt_tokens", 0), "eval_count": usage.get("completion_tokens", 0),
     }
 
 
 async def _open_ollama_stream(payload: dict[str, Any]) -> tuple[httpx.AsyncClient, httpx.Response]:
     client = httpx.AsyncClient(timeout=settings.request_timeout_seconds)
-    request = client.build_request(
-        "POST",
-        f"{settings.headroom_url}/v1/chat/completions",
-        json=payload,
-        headers=upstream_headers(),
-    )
+    request = client.build_request("POST", f"{settings.headroom_url}/v1/chat/completions", json=payload, headers=upstream_headers())
     try:
         response = await client.send(request, stream=True)
     except httpx.HTTPError:
@@ -234,12 +227,7 @@ async def _open_ollama_stream(payload: dict[str, Any]) -> tuple[httpx.AsyncClien
     return client, response
 
 
-async def _stream_completion(
-    client: httpx.AsyncClient,
-    response: httpx.Response,
-    model: str,
-    generate: bool,
-) -> AsyncIterator[bytes]:
+async def _stream_completion(client: httpx.AsyncClient, response: httpx.Response, model: str, generate: bool) -> AsyncIterator[bytes]:
     tool_calls: dict[int, dict[str, Any]] = {}
     usage: dict[str, Any] = {}
     done_reason = "stop"
@@ -298,6 +286,9 @@ async def _stream_completion(
 async def _handle_ollama(body: dict[str, Any], generate: bool) -> JSONResponse | StreamingResponse:
     if not body.get("model"):
         raise HTTPException(status_code=400, detail="model is required")
+    capabilities = model_capabilities(str(body["model"]))
+    if capabilities and not capabilities.get("tools", False) and (body.get("tools") or body.get("tool_choice") is not None):
+        raise HTTPException(status_code=400, detail="selected Cofer U Pass web model does not support tools/function calling")
     payload = ollama_generate_to_openai_chat(body) if generate else ollama_to_openai_chat(body)
 
     if payload.get("stream", True):
@@ -308,21 +299,13 @@ async def _handle_ollama(body: dict[str, Any], generate: bool) -> JSONResponse |
         if not response.is_success:
             detail = (await response.aread()).decode("utf-8", errors="replace")[:4000]
             status = response.status_code
-            await response.aclose()
-            await client.aclose()
+            await response.aclose(); await client.aclose()
             raise HTTPException(status_code=status, detail=detail)
-        return StreamingResponse(
-            _stream_completion(client, response, body["model"], generate),
-            media_type="application/x-ndjson",
-        )
+        return StreamingResponse(_stream_completion(client, response, body["model"], generate), media_type="application/x-ndjson")
 
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-            response = await client.post(
-                f"{settings.headroom_url}/v1/chat/completions",
-                json=payload,
-                headers=upstream_headers(),
-            )
+            response = await client.post(f"{settings.headroom_url}/v1/chat/completions", json=payload, headers=upstream_headers())
             response.raise_for_status()
             data = response.json()
     except httpx.HTTPStatusError as exc:

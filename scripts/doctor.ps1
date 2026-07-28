@@ -14,6 +14,10 @@ foreach ($item in @(
     else { Write-Host ("[FAIL] {0,-22} {1}" -f $item[0], $item[1]) -ForegroundColor Red; $failed = $true; break }
 }
 if (-not $failed) {
+    if (Test-CoferUPassBridge) { Write-Host "[OK]   Cofer U Pass bridge    authenticated health check" -ForegroundColor Green }
+    else { Write-Host "[FAIL] Cofer U Pass bridge    authenticated health check" -ForegroundColor Red; $failed = $true }
+}
+if (-not $failed) {
     try { Test-ContainerOllama } catch { Write-Host "[FAIL] Docker -> physical Ollama" -ForegroundColor Red; Write-Host $_.Exception.Message; $failed = $true }
 }
 if (-not $failed) {

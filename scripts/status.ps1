@@ -13,4 +13,6 @@ foreach ($item in @(
     $status = if ($ok) { "OK" } else { "DOWN" }
     Write-Host ("[{0,-4}] {1,-20} {2}" -f $status, $item[0], $item[1])
 }
+$bridgeStatus = if (Test-CoferUPassBridge) { "OK" } else { "DOWN" }
+Write-Host ("[{0,-4}] {1,-20} {2}" -f $bridgeStatus, "Cofer U Pass bridge", "http://127.0.0.1:4011/health")
 Write-Host "Dashboard: http://127.0.0.1:4000/ui"

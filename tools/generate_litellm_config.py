@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SUPPORTED_PROVIDERS = {"openrouter", "ollama", "chatgpt"}
+SUPPORTED_PROVIDERS = {"openrouter", "ollama", "chatgpt", "cofer_u_pass"}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -43,7 +43,7 @@ def quoted(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def parse_chatgpt_models(value: str) -> list[dict[str, Any]]:
+def parse_alias_models(value: str, *, provider: str, description: str, requires_env: list[str] | None = None) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for raw in value.split(","):
         raw = raw.strip()
@@ -54,17 +54,31 @@ def parse_chatgpt_models(value: str) -> list[dict[str, Any]]:
         else:
             logical = physical = raw
         if not logical or not physical:
-            raise ValueError(f"Invalid CHATGPT_MODELS entry: {raw!r}")
-        result.append(
-            {
-                "name": logical,
-                "provider": "chatgpt",
-                "model": physical,
-                "enabled": True,
-                "description": "ChatGPT subscription model via LiteLLM device OAuth",
-            }
-        )
+            raise ValueError(f"Invalid {provider} model entry: {raw!r}")
+        item: dict[str, Any] = {
+            "name": logical,
+            "provider": provider,
+            "model": physical,
+            "enabled": True,
+            "description": description,
+        }
+        if requires_env:
+            item["requires_env"] = requires_env
+        result.append(item)
     return result
+
+
+def parse_chatgpt_models(value: str) -> list[dict[str, Any]]:
+    return parse_alias_models(value, provider="chatgpt", description="ChatGPT subscription model via LiteLLM device OAuth")
+
+
+def parse_cofer_u_pass_models(value: str) -> list[dict[str, Any]]:
+    return parse_alias_models(
+        value,
+        provider="cofer_u_pass",
+        description="Authenticated web model via Cofer U Pass restricted text/file exchange",
+        requires_env=["COFER_U_PASS_BRIDGE_KEY"],
+    )
 
 
 def build_model_list(
@@ -85,16 +99,13 @@ def build_model_list(
             if logical_name in names:
                 continue
             names.add(logical_name)
-            result.append(
-                {
-                    "name": logical_name,
-                    "provider": "ollama",
-                    "model": physical_name,
-                    "description": "Discovered physical Ollama model",
-                }
-            )
+            result.append({"name": logical_name, "provider": "ollama", "model": physical_name, "description": "Discovered physical Ollama model"})
 
-    configured = list(policy.get("models") or []) + parse_chatgpt_models(env.get("CHATGPT_MODELS", ""))
+    configured = (
+        list(policy.get("models") or [])
+        + parse_chatgpt_models(env.get("CHATGPT_MODELS", ""))
+        + parse_cofer_u_pass_models(env.get("COFER_U_PASS_MODELS", ""))
+    )
     for item in configured:
         if not item.get("enabled", True):
             continue
@@ -124,10 +135,20 @@ def _prefix_once(value: str, prefix: str) -> str:
     return value if value.startswith(prefix) else prefix + value
 
 
+def model_capabilities(item: dict[str, Any]) -> dict[str, Any]:
+    if item["provider"] == "cofer_u_pass":
+        return {
+            "text_input": True, "text_output": True, "file_input": True, "file_output": True,
+            "bundle_input": True, "bundle_output": True, "streaming": "buffered",
+            "tools": False, "function_calling": False, "exchange_protocol": "cofer-u-pass.exchange/1",
+        }
+    return {"text_input": True, "text_output": True, "tools": True}
+
+
 def render(models: list[dict[str, Any]]) -> str:
     lines = [
         "# GENERATED FILE - DO NOT EDIT",
-        "# Source: config/models.json + physical Ollama /api/tags + CHATGPT_MODELS",
+        "# Source: config/models.json + physical Ollama /api/tags + CHATGPT_MODELS + COFER_U_PASS_MODELS",
         "model_list:",
     ]
     if not models:
@@ -154,25 +175,37 @@ def render(models: list[dict[str, Any]]) -> str:
                 target = "chatgpt/responses/" + physical
             lines.append(f"      model: {quoted(target)}")
             lines.append("      mode: responses")
-        if item.get("description") or item["provider"] == "chatgpt":
+        elif item["provider"] == "cofer_u_pass":
+            lines.append(f"      model: {quoted(_prefix_once(item['model'], 'openai/'))}")
+            lines.append("      api_base: os.environ/COFER_U_PASS_BRIDGE_URL")
+            lines.append("      api_key: os.environ/COFER_U_PASS_BRIDGE_KEY")
+            lines.append("      mode: responses")
+
+        if item.get("description") or item["provider"] in {"chatgpt", "cofer_u_pass"}:
             lines.append("    model_info:")
             if item.get("description"):
                 lines.append(f"      description: {quoted(str(item['description']))}")
             if item["provider"] == "chatgpt":
                 lines.append("      mode: responses")
+            if item["provider"] == "cofer_u_pass":
+                lines.append("      mode: responses")
+                lines.append("      cofer_provider: cofer_u_pass")
+                lines.append(f"      cofer_capabilities_json: {quoted(json.dumps(model_capabilities(item), separators=(',', ':')))}")
 
-    lines.extend(
-        [
-            "",
-            "litellm_settings:",
-            "  drop_params: true",
-            "",
-            "general_settings:",
-            "  master_key: os.environ/LITELLM_MASTER_KEY",
-            "",
-        ]
-    )
+    lines.extend(["", "litellm_settings:", "  drop_params: true", "", "general_settings:", "  master_key: os.environ/LITELLM_MASTER_KEY", ""])
     return "\n".join(lines)
+
+
+def render_catalog(models: list[dict[str, Any]]) -> str:
+    payload = {
+        "schema": 1,
+        "models": [
+            {"name": item["name"], "provider": item["provider"], "physical_model": item["model"],
+             "description": item.get("description"), "capabilities": model_capabilities(item)}
+            for item in models
+        ],
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
 def main() -> int:
@@ -180,6 +213,7 @@ def main() -> int:
     parser.add_argument("--env", default=str(ROOT / ".env"))
     parser.add_argument("--policy", default=str(ROOT / "config" / "models.json"))
     parser.add_argument("--output", default=str(ROOT / "config" / "generated" / "litellm.yaml"))
+    parser.add_argument("--catalog-output", default=str(ROOT / "config" / "generated" / "model-catalog.json"))
     parser.add_argument("--ollama-url", default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-ollama-offline", action="store_true")
@@ -197,17 +231,24 @@ def main() -> int:
 
     models, warnings = build_model_list(policy, env, local_models)
     content = render(models)
+    catalog = render_catalog(models)
     for warning in warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     print(f"Configured logical models: {', '.join(m['name'] for m in models) or '(none)'}", file=sys.stderr)
 
     if args.dry_run:
         print(content)
+        print("# model-catalog.json", file=sys.stderr)
+        print(catalog, file=sys.stderr)
     else:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(content, encoding="utf-8")
+        catalog_output = Path(args.catalog_output)
+        catalog_output.parent.mkdir(parents=True, exist_ok=True)
+        catalog_output.write_text(catalog, encoding="utf-8")
         print(f"Wrote {output}", file=sys.stderr)
+        print(f"Wrote {catalog_output}", file=sys.stderr)
     return 0
 
 

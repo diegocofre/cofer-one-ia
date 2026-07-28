@@ -65,11 +65,12 @@ fi
 
 cat <<'MSG'
 
-Cofer One IA v0.2.0 is ready.
+Cofer One IA v0.3.0 is ready.
 Universal gateway:  http://127.0.0.1:11434
 LiteLLM dashboard:  http://127.0.0.1:4000/ui
 Physical Ollama:    http://127.0.0.1:11435  (use collama)
 Headroom gateway:   http://127.0.0.1:8790
+Cofer U Pass bridge:http://127.0.0.1:4011
 
 Examples:
   ollama list
@@ -78,5 +79,6 @@ Examples:
   collama list
 
 Optional ChatGPT subscription provider: ./scripts/auth-chatgpt.sh
-Optional direct Codex fallback:          ./scripts/codex-direct.sh
+Optional Cofer U Pass web models:       set COFER_U_PASS_MODELS, reconfigure, then run `cofer-u-pass worker`
+Optional direct Codex fallback:         ./scripts/codex-direct.sh
 MSG
