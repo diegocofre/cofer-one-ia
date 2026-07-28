@@ -8,21 +8,22 @@ Debug from outside inward:
 
 1. physical Ollama `127.0.0.1:11435/api/tags`;
 2. LiteLLM `127.0.0.1:4000/health/liveliness`;
-3. Headroom `127.0.0.1:8790/readyz`;
-4. gateway `127.0.0.1:11434/health`;
-5. catalogs `/api/tags` and `/v1/models`;
-6. agent-specific inference.
+3. Headroom gateway `127.0.0.1:8790/readyz`;
+4. Headroom Codex liveness `127.0.0.1:8787/health`;
+5. gateway `127.0.0.1:11434/health`;
+6. catalogs `/api/tags` and `/v1/models`;
+7. agent-specific inference.
 
 ## Logs
 
 ```bash
-docker compose logs --tail=200 gateway headroom-gateway litellm postgres
+docker compose logs --tail=200 gateway headroom-gateway headroom-codex litellm
 ```
 
 Direct Codex:
 
 ```bash
-docker compose --profile codex-direct logs --tail=200 headroom-codex
+docker compose logs --tail=200 headroom-codex
 ```
 
 ## Reconfigure models

@@ -8,9 +8,9 @@ Check your own `OLLAMA_HOST`. v0.2 deliberately does not overwrite it. With no o
 
 Verify `http://127.0.0.1:11435/api/tags`. On Linux systemd, bind the Ollama service to `0.0.0.0:11435` and protect the host with the firewall as appropriate.
 
-## Dashboard fails
+## Dashboard is disabled or fails
 
-Check `postgres` health, then LiteLLM logs. PostgreSQL is intentionally internal and has no host port. The UI is `http://127.0.0.1:4000/ui`.
+The Admin UI is intentionally disabled when external PostgreSQL is not configured. Core routing still works. Run `postgres-onboard.* status` and, when configured, `postgres-onboard.* verify`, then inspect LiteLLM logs. The UI is `http://127.0.0.1:4000/ui` only after database onboarding has enabled it.
 
 ## ChatGPT device OAuth
 
@@ -23,3 +23,16 @@ Compare `ollama list` with `http://127.0.0.1:11434/v1/models`. Re-run reconfigur
 ## Direct Codex fails
 
 Run the direct status script, verify Headroom on `8787`, and run `codex login status`. Cofer One IA does not own Codex authentication.
+
+
+## LiteLLM dashboard says disabled / database unavailable
+
+This is expected when external PostgreSQL has not been configured. Core routing does not require a database.
+
+Check status:
+
+```powershell
+.\scripts\postgres-onboard.ps1 status
+```
+
+Configure or verify the external server with `postgres-onboard.*`, then run `reconfigure.*`. If verification succeeds but LiteLLM fails during startup, confirm the database account has the DDL permissions required for LiteLLM Prisma migrations.

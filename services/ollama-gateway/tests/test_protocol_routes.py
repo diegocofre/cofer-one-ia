@@ -38,7 +38,7 @@ async def test_v1_models_exposes_logical_catalog(monkeypatch, client):
 )
 async def test_native_protocols_pass_through_headroom(monkeypatch, client, endpoint, expected_path):
     captured = {}
-    async def fake_proxy(request, path, stream=None):
+    async def fake_proxy(request, path, stream=None, **kwargs):
         captured["path"] = path
         captured["body"] = json.loads(await request.body())
         return JSONResponse({"ok": True})
@@ -78,7 +78,7 @@ def test_launch_required_routes_are_registered():
 @pytest.mark.asyncio
 async def test_responses_stream_tools_and_results_are_not_rewritten(monkeypatch, client):
     captured = {}
-    async def fake_proxy(request, path, stream=None):
+    async def fake_proxy(request, path, stream=None, **kwargs):
         captured["path"] = path
         captured["body"] = json.loads(await request.body())
         return JSONResponse({"ok": True})
@@ -101,7 +101,7 @@ async def test_responses_stream_tools_and_results_are_not_rewritten(monkeypatch,
 @pytest.mark.asyncio
 async def test_anthropic_stream_tool_use_and_result_are_not_rewritten(monkeypatch, client):
     captured = {}
-    async def fake_proxy(request, path, stream=None):
+    async def fake_proxy(request, path, stream=None, **kwargs):
         captured["body"] = json.loads(await request.body())
         return JSONResponse({"ok": True})
     monkeypatch.setattr(main, "proxy_json_request", fake_proxy)

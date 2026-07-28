@@ -1,10 +1,12 @@
 param(
     [switch]$WithUpstreams,
     [switch]$CodexDirect,
+    [switch]$ConfigurePostgres,
     [switch]$Source
 )
 
 . (Join-Path $PSScriptRoot "_common.ps1")
+$coferVersion = (Get-Content (Join-Path $Root "VERSION") -Raw).Trim()
 
 Write-Step "Checking prerequisites"
 foreach ($cmd in @("git", "docker", "ollama")) { Require-Command $cmd }
@@ -29,6 +31,24 @@ if (-not [string]::IsNullOrWhiteSpace($currentOllamaHost)) {
 Write-Step "Installing collama physical-Ollama wrapper"
 Install-Collama
 
+if ($ConfigurePostgres) {
+    Write-Step "Configuring optional external PostgreSQL"
+    & (Join-Path $PSScriptRoot "postgres-onboard.ps1")
+    if ($LASTEXITCODE -ne 0) { throw "PostgreSQL onboarding failed." }
+}
+
+Write-Step "Migrating optional PostgreSQL configuration"
+Push-Location $Root
+try { Invoke-Python "tools/postgres_onboard.py" "migrate" "--env" ".env" } finally { Pop-Location }
+
+Write-Step "LiteLLM persistence mode"
+Show-LiteLLMDatabaseStatus
+if (-not (Test-LiteLLMDatabaseConfigured)) {
+    Write-Host "Core routing will run without PostgreSQL."
+    Write-Host "Admin UI and database-backed LiteLLM management features remain disabled."
+    Write-Host "Configure later with: .\scripts\postgres-onboard.ps1"
+}
+
 Write-Step "Preparing physical Ollama on port 11435"
 Ensure-PhysicalOllama
 
@@ -47,9 +67,11 @@ if (-not $Source) { Invoke-CoferCompose pull }
 Invoke-CoferCompose -Source:$Source up -d --build --remove-orphans
 
 Write-Step "Waiting for services"
-Wait-Url "http://127.0.0.1:4000/health/liveliness" 120
-Wait-Url "http://127.0.0.1:8790/health" 90
-Wait-Url "http://127.0.0.1:11434/health" 60
+Wait-Service "litellm" "http://127.0.0.1:4000/health/liveliness" 180
+Wait-Service "litellm-chatgpt" "http://127.0.0.1:4001/health/liveliness" 180
+Wait-Service "headroom-gateway" "http://127.0.0.1:8790/readyz" 180
+Wait-Service "headroom-codex" "http://127.0.0.1:8787/health" 180
+Wait-Service "gateway" "http://127.0.0.1:11434/health" 90
 
 Write-Step "Checking Docker -> physical Ollama connectivity"
 Test-ContainerOllama
@@ -64,17 +86,26 @@ if ($CodexDirect) {
 }
 
 Write-Host ""
-Write-Host "Cofer One IA v0.2.0 is ready." -ForegroundColor Green
+Write-Host "Cofer One IA v$coferVersion is ready." -ForegroundColor Green
 Write-Host "Universal gateway:  http://127.0.0.1:11434"
-Write-Host "LiteLLM dashboard:  http://127.0.0.1:4000/ui"
+Write-Host "LiteLLM API:        http://127.0.0.1:4000"
+Write-Host "ChatGPT LiteLLM:    http://127.0.0.1:4001  (OAuth sidecar)"
+if (Test-LiteLLMDatabaseConfigured) {
+    Write-Host "LiteLLM dashboard:  http://127.0.0.1:4000/ui"
+} else {
+    Write-Host "LiteLLM dashboard:  disabled (configure external PostgreSQL to enable)"
+}
 Write-Host "Physical Ollama:    http://127.0.0.1:11435  (use collama)"
 Write-Host "Headroom gateway:   http://127.0.0.1:8790"
+Write-Host "Headroom Codex:     http://127.0.0.1:8787  (proxy always running; profile is opt-in)"
 Write-Host ""
 Write-Host "Examples:"
 Write-Host "  ollama list"
-Write-Host "  ollama launch codex"
-Write-Host "  ollama launch claude"
+Write-Host "  collama launch codex"
+Write-Host "  collama launch claude"
+Write-Host "  collama launch opencode"
 Write-Host "  collama list"
 Write-Host ""
+Write-Host "Optional PostgreSQL onboarding:          .\scripts\postgres-onboard.ps1"
 Write-Host "Optional ChatGPT subscription provider: .\scripts\auth-chatgpt.ps1"
 Write-Host "Optional direct Codex fallback:          .\scripts\codex-direct.ps1"

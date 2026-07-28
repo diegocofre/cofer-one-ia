@@ -2,16 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
+COFER_VERSION="$(tr -d '\r\n' < "$ROOT/VERSION")"
 
 WITH_UPSTREAMS=0
 COFER_SOURCE=0
 CODEX_DIRECT=0
+CONFIGURE_POSTGRES=0
 for arg in "$@"; do
   case "$arg" in
     --with-upstreams) WITH_UPSTREAMS=1 ;;
     --source) COFER_SOURCE=1 ;;
     --codex-direct) CODEX_DIRECT=1 ;;
-    -h|--help) echo "Usage: $0 [--with-upstreams] [--source] [--codex-direct]"; exit 0 ;;
+    --configure-postgres) CONFIGURE_POSTGRES=1 ;;
+    -h|--help) echo "Usage: $0 [--with-upstreams] [--source] [--codex-direct] [--configure-postgres]"; exit 0 ;;
     *) echo "Unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -32,6 +35,22 @@ ensure_cofer_secrets
 step "Installing collama physical-Ollama wrapper"
 install_collama
 
+if [[ "$CONFIGURE_POSTGRES" == "1" ]]; then
+  step "Configuring optional external PostgreSQL"
+  "$ROOT/scripts/postgres-onboard.sh" configure
+fi
+
+step "Migrating optional PostgreSQL configuration"
+(cd "$ROOT" && run_python tools/postgres_onboard.py migrate --env .env)
+
+step "LiteLLM persistence mode"
+show_litellm_database_status
+if ! litellm_database_configured; then
+  echo "Core routing will run without PostgreSQL."
+  echo "Admin UI and database-backed LiteLLM management features remain disabled."
+  echo "Configure later with: ./scripts/postgres-onboard.sh"
+fi
+
 step "Preparing physical Ollama on port 11435"
 ensure_physical_ollama
 
@@ -48,9 +67,11 @@ if [[ "$COFER_SOURCE" != "1" ]]; then compose pull; fi
 compose up -d --build --remove-orphans
 
 step "Waiting for services"
-wait_url http://127.0.0.1:4000/health/liveliness 120
-wait_url http://127.0.0.1:8790/health 90
-wait_url http://127.0.0.1:11434/health 60
+wait_service litellm http://127.0.0.1:4000/health/liveliness 180
+wait_service litellm-chatgpt http://127.0.0.1:4001/health/liveliness 180
+wait_service headroom-gateway http://127.0.0.1:8790/readyz 180
+wait_service headroom-codex http://127.0.0.1:8787/health 180
+wait_service gateway http://127.0.0.1:11434/health 90
 
 step "Checking Docker -> physical Ollama connectivity"
 check_container_ollama
@@ -63,20 +84,25 @@ if [[ "$CODEX_DIRECT" == "1" ]]; then
   "$ROOT/scripts/codex-direct-setup.sh"
 fi
 
-cat <<'MSG'
+cat <<MSG
 
-Cofer One IA v0.2.0 is ready.
+Cofer One IA v${COFER_VERSION} is ready.
 Universal gateway:  http://127.0.0.1:11434
-LiteLLM dashboard:  http://127.0.0.1:4000/ui
+LiteLLM API:        http://127.0.0.1:4000
+ChatGPT LiteLLM:     http://127.0.0.1:4001  (OAuth sidecar)
+LiteLLM dashboard:  $(if litellm_database_configured; then echo 'http://127.0.0.1:4000/ui'; else echo 'disabled (configure external PostgreSQL to enable)'; fi)
 Physical Ollama:    http://127.0.0.1:11435  (use collama)
 Headroom gateway:   http://127.0.0.1:8790
+Headroom Codex:     http://127.0.0.1:8787  (proxy always running; profile is opt-in)
 
 Examples:
   ollama list
-  ollama launch codex
-  ollama launch claude
+  collama launch codex
+  collama launch claude
+  collama launch opencode
   collama list
 
+Optional PostgreSQL onboarding:          ./scripts/postgres-onboard.sh
 Optional ChatGPT subscription provider: ./scripts/auth-chatgpt.sh
 Optional direct Codex fallback:          ./scripts/codex-direct.sh
 MSG

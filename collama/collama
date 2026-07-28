@@ -1,13 +1,65 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
-PHYSICAL_OLLAMA_HOST="${COFER_PHYSICAL_OLLAMA_HOST:-http://127.0.0.1:11435}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+if [[ ! -f "$VERSION_FILE" && -f "$SCRIPT_DIR/../VERSION" ]]; then VERSION_FILE="$SCRIPT_DIR/../VERSION"; fi
+COLLAMA_VERSION="$(tr -d '\r\n' < "$VERSION_FILE" 2>/dev/null || printf 'dev')"
+PYTHON_PROBE_MARKER="COFER_PYTHON_OK"
 
+if [[ "${1:-}" == "--cofer-version" ]]; then
+  echo "collama $COLLAMA_VERSION"
+  echo "wrapper: $0"
+  echo "launcher: $SCRIPT_DIR/collama_launch.py"
+  exit 0
+fi
+
+python_probe() {
+  local output
+  output="$("$@" -c 'print("COFER_PYTHON_OK")' 2>/dev/null | tr -d '\r\n' || true)"
+  [[ "$output" == "$PYTHON_PROBE_MARKER" ]]
+}
+
+find_python3() {
+  # Windows App Execution Aliases can claim to exist and can even return a
+  # misleading success status. Accept a runtime only if it actually executes
+  # Python code and prints our exact probe marker.
+  if command -v py >/dev/null 2>&1 && python_probe py -3; then
+    printf '%s\n' 'py -3'
+    return 0
+  fi
+  local candidate
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && python_probe "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [[ "${1:-}" == "launch" ]]; then
+  LAUNCHER="$SCRIPT_DIR/collama_launch.py"
+  if [[ ! -f "$LAUNCHER" ]]; then
+    echo "collama: launcher helper not found: $LAUNCHER" >&2
+    exit 2
+  fi
+  runtime="$(find_python3 || true)"
+  case "$runtime" in
+    'py -3') exec py -3 "$LAUNCHER" "$@" ;;
+    python3|python) exec "$runtime" "$LAUNCHER" "$@" ;;
+    *)
+      echo "collama: a working Python 3 interpreter was not found." >&2
+      echo "collama: tried 'py -3', 'python3', and 'python'; Windows Store aliases are rejected unless they execute the probe." >&2
+      exit 127
+      ;;
+  esac
+fi
+
+PHYSICAL_OLLAMA_HOST="${COFER_PHYSICAL_OLLAMA_HOST:-http://127.0.0.1:11435}"
 if ! command -v ollama >/dev/null 2>&1; then
   echo "collama: ollama was not found in PATH" >&2
   exit 127
 fi
-
 export OLLAMA_HOST="$PHYSICAL_OLLAMA_HOST"
 exec ollama "$@"

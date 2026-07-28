@@ -18,7 +18,7 @@ jobs:
       - name: Install gateway test dependencies
         run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
       - name: Compile Python
-        run: python -m compileall services/ollama-gateway/app tools
+        run: python -m compileall services/ollama-gateway/app tools collama/collama_launch.py
       - name: Gateway and contract tests
         run: python -m pytest services/ollama-gateway/tests
       - name: Build gateway container
@@ -34,6 +34,17 @@ jobs:
           assert isinstance(data.get('model_list'), list)
           assert 'general_settings' in data
           PY
+      - name: Validate repository version
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          version = Path('VERSION').read_text().strip()
+          assert re.fullmatch(r'(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)', version), version
+          changelog = Path('CHANGELOG.md').read_text()
+          assert f'## [{version}] - ' in changelog
+          assert 'COFER_VERSION_FILE' in Path('compose.yaml').read_text()
+          PY
       - name: Validate JSON
         run: python -m json.tool config/models.json >/dev/null && python -m json.tool upstreams.lock.json >/dev/null
       - name: Validate shell syntax
@@ -47,14 +58,19 @@ jobs:
           from pathlib import Path
           compose = yaml.safe_load(Path('compose.yaml').read_text())
           services = compose['services']
-          assert 'postgres' in services
-          assert 'ports' not in services['postgres']
+          assert 'postgres' not in services
+          assert 'volumes' not in compose or 'litellm-postgres' not in (compose.get('volumes') or {})
           assert services['headroom-gateway']['command'][-2:] == ['--port', '8787']
+          assert 'headroom-chatgpt' not in services
           assert services['headroom-codex']['command'][-2:] == ['--port', '8787']
-          assert services['headroom-codex']['profiles'] == ['codex-direct']
+          assert 'profiles' not in services['headroom-codex']
           assert 'OPENAI_API_KEY' not in services['headroom-codex']['environment']
           assert 'headroom-gateway:8787' in services['gateway']['environment']['GATEWAY_UPSTREAM_URL']
-          assert services['litellm']['environment']['CHATGPT_TOKEN_DIR'] == '/app/chatgpt-auth'
+          assert 'CHATGPT_GATEWAY_UPSTREAM_URL' not in services['gateway']['environment']
+          assert services['gateway']['environment']['CHATGPT_LITELLM_URL'] == 'http://litellm-chatgpt:4000'
+          assert services['litellm']['environment']['DATABASE_URL'] is None
+          assert services['litellm']['environment']['STORE_MODEL_IN_DB'] == '${LITELLM_STORE_MODEL_IN_DB:-False}'
+          assert services['litellm']['environment']['DISABLE_ADMIN_UI'] == '${LITELLM_DISABLE_ADMIN_UI:-True}'
           PY
 
   windows-scripts:
@@ -86,3 +102,4 @@ jobs:
           $cmd = @(Get-PythonInvocation)
           if ($cmd.Count -lt 1) { throw "Get-PythonInvocation returned no executable." }
           Invoke-Python --version
+          python -m py_compile .\collama\collama_launch.py

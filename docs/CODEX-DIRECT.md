@@ -1,6 +1,6 @@
 # Direct Codex fallback
 
-Direct mode is an optional escape hatch:
+Direct mode is an optional escape hatch. Its Headroom proxy is always started with the core Docker stack so the fallback is immediately available; only selecting the Codex `cofer-direct` profile is opt-in:
 
 ```text
 Codex -> Headroom :8787 -> ChatGPT Codex backend
@@ -33,4 +33,4 @@ Cofer One IA never reads or copies Codex `auth.json`.
 .\scripts\codex-direct-disable.ps1
 ```
 
-or the equivalent `.sh` scripts. If a file with the same profile name existed before setup, it is backed up in Cofer's ignored `.state` directory and restored on disable.
+or the equivalent `.sh` scripts. Disabling removes/restores only the managed Codex profile; the `headroom-codex` container remains running as part of the core stack. If a file with the same profile name existed before setup, it is backed up in Cofer's ignored `.state` directory and restored on disable.

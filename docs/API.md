@@ -31,3 +31,10 @@ Anthropic protocol headers such as `anthropic-version` and `anthropic-beta` are 
 ## Health
 
 - `GET /health` checks Headroom and LiteLLM.
+
+## Provider-path isolation
+
+The public API always uses stable logical model names. Requests whose model is
+a ChatGPT subscription alias (`openai/...` in the fixed catalog) are dispatched
+to the dedicated ChatGPT Headroom/LiteLLM route before proxy authentication is
+applied. Ollama/OpenRouter models use the master-key-protected standard route.
