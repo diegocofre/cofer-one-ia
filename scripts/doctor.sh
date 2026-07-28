@@ -6,7 +6,9 @@ step "Cofer One IA Doctor"
 checks=(
   "Physical Ollama|http://127.0.0.1:11435/api/tags"
   "LiteLLM|http://127.0.0.1:4000/health/liveliness"
+  "LiteLLM ChatGPT|http://127.0.0.1:4001/health/liveliness"
   "Headroom gateway|http://127.0.0.1:8790/readyz"
+  "Headroom Codex|http://127.0.0.1:8787/health"
   "Universal gateway|http://127.0.0.1:11434/health"
   "Ollama models|http://127.0.0.1:11434/api/tags"
   "OpenAI models|http://127.0.0.1:11434/v1/models"
@@ -22,4 +24,12 @@ else
   exit 1
 fi
 check_container_ollama
-printf 'All control-plane checks passed.\n'
+echo '[INFO] Agent context: Codex with local Ollama should use a large context window (64K+ recommended by Ollama). Check loaded models with: collama ps'
+echo '[INFO] Ollama Cloud: sign in on physical Ollama with: collama signin'
+echo '[INFO] Ollama Cloud: catalog presence does not guarantee entitlement; provider 403/subscription errors are account-plan restrictions.'
+if litellm_database_configured; then
+  echo '[INFO] External PostgreSQL configured. Run ./scripts/postgres-onboard.sh verify for an authenticated DB probe.'
+else
+  echo '[INFO] PostgreSQL disabled by configuration; DB-backed LiteLLM features are intentionally skipped.'
+fi
+printf 'All enabled control-plane checks passed.\n'

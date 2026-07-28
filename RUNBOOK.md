@@ -10,6 +10,9 @@ Debug from outside inward:
 2. Cofer U Pass bridge `127.0.0.1:4011/health` (authenticated);
 3. LiteLLM `127.0.0.1:4000/health/liveliness`;
 4. Headroom `127.0.0.1:8790/readyz`;
+2. LiteLLM `127.0.0.1:4000/health/liveliness`;
+3. Headroom gateway `127.0.0.1:8790/readyz`;
+4. Headroom Codex liveness `127.0.0.1:8787/health`;
 5. gateway `127.0.0.1:11434/health`;
 6. catalogs `/api/tags` and `/v1/models`;
 7. agent-specific inference.
@@ -18,12 +21,13 @@ Debug from outside inward:
 
 ```bash
 docker compose logs --tail=200 gateway headroom-gateway litellm cupass-bridge postgres
+docker compose logs --tail=200 gateway headroom-gateway headroom-codex litellm
 ```
 
 Direct Codex:
 
 ```bash
-docker compose --profile codex-direct logs --tail=200 headroom-codex
+docker compose logs --tail=200 headroom-codex
 ```
 
 ## Reconfigure models

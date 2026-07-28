@@ -6,6 +6,12 @@ services:
       context: ./upstream/litellm
       dockerfile: Dockerfile
 
+  litellm-chatgpt:
+    image: cofer-one-ia-litellm:source
+    build:
+      context: ./upstream/litellm
+      dockerfile: Dockerfile
+
   headroom-gateway:
     image: cofer-one-ia-headroom:source
     build: &headroom-source-build

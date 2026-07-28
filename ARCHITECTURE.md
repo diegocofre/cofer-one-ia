@@ -42,8 +42,28 @@ The bridge is published to the host only at `127.0.0.1:4011`. Cofer U Pass remai
 - Anthropic: `/v1/messages`.
 
 OpenAI and Anthropic inference payloads remain on the Headroom -> LiteLLM path. Ollama chat/generate payloads are translated to OpenAI Chat Completions because the Ollama wire format differs. Files are not inference and are proxied directly from the public gateway to the Cofer U Pass bridge.
+       |
+       +-- Ollama/OpenRouter
+       |     -> Headroom gateway :8790
+       |          -> LiteLLM main :4000 (master-key protected)
+       |               -> physical Ollama :11435
+       |               -> OpenRouter
+       |
+       +-- ChatGPT subscription aliases (openai/...)
+             -> LiteLLM ChatGPT :4001 (no master key)
+                  -> ChatGPT subscription OAuth
+```
 
-## Routing authority
+The gateway supports Ollama (`/api/*`), OpenAI (`/v1/chat/completions`,
+`/v1/responses`, `/v1/models`) and Anthropic (`/v1/messages`) surfaces.
+
+## Routing and catalog authority
+
+`tools/generate_litellm_config.py` builds one effective policy from physical
+Ollama discovery plus `config/models.json`, then writes two runtime configs:
+
+1. `litellm.yaml`: Ollama/OpenRouter routes, protected by `LITELLM_MASTER_KEY`;
+2. `litellm-chatgpt.yaml`: ChatGPT subscription routes only, with no proxy master key.
 
 LiteLLM remains the sole provider-routing authority. The gateway does not infer providers from model names. `/api/tags` and `/v1/models` are derived from LiteLLM's model catalog.
 
@@ -80,6 +100,22 @@ Normal client credentials are not forwarded upstream. The gateway authenticates 
 LiteLLM ChatGPT subscription mode owns a separate device-OAuth token store mounted at `data/litellm/chatgpt`.
 
 The Cofer U Pass bridge owns a separate bearer key (`COFER_U_PASS_BRIDGE_KEY`). Browser authentication remains entirely inside persistent Cofer U Pass profiles on the host. The bridge stores only exchanged files/jobs/profile capability announcements; it never receives cookies or profile storage.
+The gateway merges both LiteLLM model catalogs and publishes stable public
+names. It dispatches `openai/...` subscription aliases directly to the isolated ChatGPT
+LiteLLM sidecar, bypassing Headroom. OpenRouter keeps native public slugs such as
+`google/gemma-4-31b-it:free`, but the gateway rewrites them to neutral internal
+`cofer-openrouter--...` deployment IDs before Headroom/LiteLLM. This prevents the
+Responses API from treating the vendor segment (`google/`, `nvidia/`, etc.) as a
+provider selector. LiteLLM then uses OpenRouter's OpenAI-compatible API base with
+`OPENROUTER_API_KEY`. Local Ollama models keep their native names.
+
+## Authentication boundaries
+
+Client credentials, including any caller-supplied `ChatGPT-Account-ID`, are stripped at the gateway. Standard traffic receives the
+internal LiteLLM master key only on the protected standard path. ChatGPT
+subscription traffic never receives that key. The ChatGPT sidecar obtains its
+upstream Authorization from its own device-OAuth token store under
+`data/litellm/chatgpt`. Codex direct credentials remain separate.
 
 ## Direct Codex path
 
@@ -93,9 +129,9 @@ This remains independent from the normal router. Codex remains responsible for i
 
 ## Persistence
 
-- PostgreSQL named volume: LiteLLM Admin UI/gateway state.
+- Optional external PostgreSQL: main LiteLLM Admin UI/database-backed state.
 - `data/litellm/chatgpt`: LiteLLM-owned ChatGPT OAuth tokens; ignored by Git.
-- `data/headroom/gateway`: universal Headroom state.
+- `data/headroom/gateway`: standard Headroom state.
 - `data/headroom/codex`: direct-Codex Headroom state.
 - `data/cupass-bridge`: bridge SQLite queue and exchanged files; browser profiles are not stored here.
 - `.state`: local migration/process/backup metadata; ignored by Git.
@@ -109,3 +145,26 @@ A provider/protocol failure marks only that bridge job failed; it does not termi
 ## Ollama environment policy
 
 Cofer One IA never writes a new user-level `OLLAMA_HOST`. Plain Ollama therefore uses its normal `11434` default unless the user independently configured another value. `collama` is the explicit direct-physical path and sets `OLLAMA_HOST=11435` only in the child process.
+Cofer One IA v0.3 never writes a new user-level `OLLAMA_HOST`. Plain Ollama therefore uses its normal `11434` default unless the user independently configured another value.
+
+Windows upgrades from v0.1.x restore the pre-install value only when `.state/ollama-host-before.json` proves Cofer ownership and the current value is still the old Cofer `11435` redirect. Unrelated user changes are preserved.
+
+`collama` is the explicit direct-physical path and sets `OLLAMA_HOST=11435` only in the child process.
+
+## Provider-specific protocol deployments
+
+Cofer keeps the public catalog independent from the wire protocol used by each agent.
+For local Ollama, Ollama Cloud and OpenRouter, LiteLLM publishes two internal deployments
+per logical model:
+
+- OpenAI-surface clients such as Codex use the native OpenAI-compatible Responses route
+  (`openai/<model>` for Ollama, or OpenRouter's OpenAI-compatible endpoint).
+- Anthropic-surface clients such as Claude Code use a private `cofer-anthropic--*`
+  deployment backed by the provider's Chat Completions transport (`ollama_chat/*` or
+  `openrouter/*`). This avoids routing Claude tool schemas through the newer
+  Anthropic-to-Responses bridge while preserving native Responses for Codex.
+
+For local Ollama models that do not implement thinking, the gateway removes Claude's
+`thinking` / reasoning-effort controls before forwarding the request. Known thinking
+families keep those controls. Ollama Cloud authentication remains entirely inside the
+physical Ollama daemon and provider subscription/plan errors are returned unchanged.

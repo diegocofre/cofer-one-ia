@@ -1,8 +1,26 @@
-# ChatGPT subscription provider
+# ChatGPT subscription OAuth
 
-This optional route uses LiteLLM's ChatGPT provider and LiteLLM-owned device OAuth. It is separate from Codex's own login.
+Cofer One IA routes ChatGPT subscription models directly through a dedicated LiteLLM
+OAuth sidecar. This is deliberately separate from both Headroom and the master-key-protected
+LiteLLM instance used for Ollama/OpenRouter.
 
-## Authenticate
+```text
+public model openai/gpt-5.6-luna
+          |
+       Gateway
+          |
+  LiteLLM ChatGPT :4001
+     (no master key)
+          |
+   ChatGPT device OAuth
+```
+
+The separate sidecar prevents Cofer's internal `LITELLM_MASTER_KEY` from ever
+becoming an upstream OpenAI `Authorization` credential. Headroom is intentionally not
+placed before this sidecar because the OAuth bearer and `ChatGPT-Account-ID` pair must
+remain owned by the ChatGPT LiteLLM route.
+
+Authenticate once:
 
 Windows:
 
@@ -10,24 +28,45 @@ Windows:
 .\scripts\auth-chatgpt.ps1
 ```
 
-Linux/Git Bash:
+Git Bash / Linux:
 
 ```bash
 ./scripts/auth-chatgpt.sh
 ```
 
-The command runs LiteLLM's authenticator in the LiteLLM container. Follow the printed device-code instructions. Tokens persist under `data/litellm/chatgpt`, which is ignored by Git.
+Complete the device-code login in the browser. The sidecar stores its own token
+material under `data/litellm/chatgpt/`, which is ignored by Git. It does not
+read or copy Codex `auth.json`.
 
-## Publish logical models
+## Fixed OpenAI catalog
 
-Set `.env`, for example:
+The model IDs live in `config/models.json`:
 
-```dotenv
-CHATGPT_MODELS=coding=gpt-example-codex,general=gpt-example
+```text
+openai/gpt-5.6-sol   -> gpt-5.6-sol
+openai/gpt-5.6-terra -> gpt-5.6-terra
+openai/gpt-5.6-luna  -> gpt-5.6-luna
+openai/gpt-5.4-mini   -> gpt-5.4-mini
 ```
 
-Use model IDs actually available to your account; availability changes independently of Cofer One IA. Then run `reconfigure.ps1` or `reconfigure.sh`.
+Each route has an `active` switch. Missing/false means unpublished.
 
-## Caveat
+`tools/generate_litellm_config.py` produces two configs:
 
-ChatGPT-subscription routing is an integration with LiteLLM's ChatGPT provider rather than the ordinary OpenAI API-key path. Treat it as optional/experimental and validate the models and protocol used by each agent. Responses-based clients are the primary target.
+```text
+config/generated/litellm.yaml
+  Ollama + OpenRouter, protected by LITELLM_MASTER_KEY
+
+config/generated/litellm-chatgpt.yaml
+  ChatGPT subscription only, no proxy master key
+```
+
+Public names remain `openai/...`; the sidecar deployment names are neutral
+aliases such as `cofer-chatgpt--gpt-5.6-luna`, targeting
+`chatgpt/gpt-5.6-luna` internally, with `mode: responses` selecting the Responses API wire path.
+
+After authentication or catalog changes:
+
+```bash
+./scripts/reconfigure.sh
+```

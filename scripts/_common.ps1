@@ -46,6 +46,21 @@ function New-RandomSecret {
 }
 function Test-Url([string]$Url, [int]$TimeoutSeconds = 3) { try { Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec $TimeoutSeconds | Out-Null; return $true } catch { return $false } }
 function Wait-Url([string]$Url, [int]$TimeoutSeconds = 45) { $deadline=(Get-Date).AddSeconds($TimeoutSeconds); while((Get-Date)-lt $deadline){ if(Test-Url $Url 2){return}; Start-Sleep -Milliseconds 800 }; throw "Timed out waiting for $Url" }
+function Show-ServiceDiagnostics([string]$Service) {
+    try { Invoke-CoferCompose ps $Service } catch { Write-Warning $_.Exception.Message }
+    try { Invoke-CoferCompose logs --tail=120 $Service } catch { Write-Warning $_.Exception.Message }
+}
+function Wait-Service([string]$Service, [string]$Url, [int]$TimeoutSeconds = 90) {
+    try {
+        Wait-Url $Url $TimeoutSeconds
+        Write-Host "$Service`: ready ($Url)"
+    } catch {
+        Write-Host ""
+        Write-Warning "Timed out waiting for $Service at $Url. Showing diagnostics."
+        Show-ServiceDiagnostics $Service
+        throw
+    }
+}
 
 function Invoke-CoferCompose {
     param([switch]$AllClients, [switch]$Source, [switch]$CodexDirect, [Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
@@ -53,7 +68,6 @@ function Invoke-CoferCompose {
     try {
         $args=@("compose","--env-file",".env","-f","compose.yaml")
         if($Source){$args+=@("-f","compose.source.yaml")}
-        if($CodexDirect){$args+=@("--profile","codex-direct")}
         $args+=$Arguments
         & docker @args
         if($LASTEXITCODE -ne 0){throw "docker compose failed with exit code $LASTEXITCODE."}
@@ -105,8 +119,20 @@ function Ensure-PhysicalOllama {
 }
 function Test-ContainerOllama { Invoke-CoferCompose exec -T litellm python -c "import urllib.request; urllib.request.urlopen('http://host.docker.internal:11435/api/tags', timeout=5).read(); print('container -> physical Ollama: OK')" }
 function Install-Collama { & (Join-Path $Root "collama\install-collama.ps1") }
+
+function Test-LiteLLMDatabaseConfigured {
+    $value = Get-DotEnvValue "DATABASE_URL"
+    if ([string]::IsNullOrWhiteSpace($value)) { $value = Get-DotEnvValue "LITELLM_DATABASE_URL" }
+    return -not [string]::IsNullOrWhiteSpace($value)
+}
+function Show-LiteLLMDatabaseStatus {
+    Push-Location $Root
+    try { Invoke-Python "tools/postgres_onboard.py" "status" "--env" ".env" } finally { Pop-Location }
+}
+
 function Ensure-CoferSecrets {
     foreach($key in @("LITELLM_MASTER_KEY","LITELLM_SALT_KEY","LITELLM_DB_PASSWORD","LITELLM_UI_PASSWORD","COFER_U_PASS_BRIDGE_KEY")){
+    foreach($key in @("LITELLM_MASTER_KEY","LITELLM_SALT_KEY")){
         $value=Get-DotEnvValue $key
         if([string]::IsNullOrWhiteSpace($value)-or $value.StartsWith("CHANGE_ME")){Set-DotEnvValue $key (New-RandomSecret); Write-Host "Generated $key"}
     }

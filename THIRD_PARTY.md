@@ -6,7 +6,7 @@ Cofer One IA is Apache-2.0 licensed. Integrated third-party software retains its
 |---|---|---|---|
 | Headroom | context optimization and Codex direct proxy | `headroomlabs-ai/headroom` | Apache-2.0 upstream; retain required notices |
 | LiteLLM | model/provider routing and Admin UI | `BerriAI/litellm` | MIT for the open-source tree outside separately licensed enterprise areas |
-| PostgreSQL | internal LiteLLM persistent state | official `postgres` container image | PostgreSQL License; not source-vendored by this repository |
+| PostgreSQL | optional external LiteLLM persistence; short-lived `psql` client for onboarding verification | external server + official `postgres` client image | PostgreSQL License; no database server is redistributed or started by this repository |
 | Ollama | physical local inference and Ollama Launch | installed separately on the host | not redistributed by this repository |
 | FastAPI / HTTPX / Uvicorn | universal gateway runtime | Python dependencies in gateway image | retain upstream license notices as required |
 

@@ -50,3 +50,10 @@ Cofer U Pass routes do not support tools. Agents should query capabilities befor
 
 - `GET /health` checks Headroom and LiteLLM.
 - The authenticated Cofer U Pass bridge health is checked by `scripts/doctor.*` and `scripts/status.*`.
+
+## Provider-path isolation
+
+The public API always uses stable logical model names. Requests whose model is
+a ChatGPT subscription alias (`openai/...` in the fixed catalog) are dispatched
+to the dedicated ChatGPT Headroom/LiteLLM route before proxy authentication is
+applied. Ollama/OpenRouter models use the master-key-protected standard route.
