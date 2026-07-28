@@ -223,11 +223,11 @@ def test_claude_adapter_matches_gateway_environment_contract():
     spec = MODULE.ClaudeAdapter().build(model.name, [model], "http://127.0.0.1:11434", [])
     assert spec.command == ["claude", "--model", model.name]
     assert spec.env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11434"
-    assert spec.env["ANTHROPIC_API_KEY"] == "cofer-one-ia"
-    assert "ANTHROPIC_AUTH_TOKEN" not in spec.env
-    assert set(spec.unset_env) == {"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
+    assert spec.env["ANTHROPIC_AUTH_TOKEN"] == "cofer-one-ia"
+    assert "ANTHROPIC_API_KEY" not in spec.env
+    assert set(spec.unset_env) == {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
     assert spec.env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
-    assert spec.env["ENABLE_TOOL_SEARCH"] == "false"
+    assert spec.env["ENABLE_TOOL_SEARCH"] == "0"
     assert spec.env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] == "1"
     assert spec.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == model.name
     assert spec.env["CLAUDE_CODE_SUBAGENT_MODEL"] == model.name
@@ -239,7 +239,7 @@ def test_launch_client_unsets_conflicting_claude_auth(monkeypatch):
     models = [CatalogModel("deepseek-r1:14b", "ollama")]
     monkeypatch.setattr(MODULE, "fetch_catalog", lambda *_args, **_kwargs: models)
     monkeypatch.setattr(MODULE, "resolve_client_command", lambda command: (list(command), False))
-    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "old-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "old-api-key")
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "old-oauth")
     captured = {}
 
@@ -260,8 +260,8 @@ def test_launch_client_unsets_conflicting_claude_auth(monkeypatch):
         extra_args=[],
     )
     assert rc == 0
-    assert captured["env"]["ANTHROPIC_API_KEY"] == "cofer-one-ia"
-    assert "ANTHROPIC_AUTH_TOKEN" not in captured["env"]
+    assert captured["env"]["ANTHROPIC_AUTH_TOKEN"] == "cofer-one-ia"
+    assert "ANTHROPIC_API_KEY" not in captured["env"]
     assert "CLAUDE_CODE_OAUTH_TOKEN" not in captured["env"]
 
 
@@ -440,3 +440,75 @@ def test_windows_hermes_fallback_is_resolved_when_not_on_path(monkeypatch):
 
     assert command[0].endswith("hermes.exe")
     assert use_shell is False
+
+def test_v031_claude_uses_gateway_bearer_token_contract():
+    model = CatalogModel("openai/gpt-5.6-luna", "chatgpt")
+    spec = MODULE.ClaudeAdapter().build(model.name, [model], "http://127.0.0.1:11434", [])
+    assert spec.env["ANTHROPIC_AUTH_TOKEN"] == "cofer-one-ia"
+    assert "ANTHROPIC_API_KEY" not in spec.env
+    assert set(spec.unset_env) == {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+    assert spec.env["ENABLE_TOOL_SEARCH"] == "0"
+
+
+def test_v031_claude_filters_local_models_without_tools(monkeypatch, capsys):
+    models = [CatalogModel("phi4:14b", "ollama"), CatalogModel("qwen3-coder:30b", "ollama")]
+    monkeypatch.setattr(MODULE, "fetch_catalog", lambda *_args, **_kwargs: models)
+
+    def capabilities(_gateway, model, timeout=MODULE.DEFAULT_TIMEOUT_SECONDS):
+        caps = {"phi4:14b": frozenset({"completion"}), "qwen3-coder:30b": frozenset({"completion", "tools"})}
+        return CatalogModel(model.name, model.owner, caps[model.name])
+
+    monkeypatch.setattr(MODULE, "fetch_model_capabilities", capabilities)
+    rc = MODULE.launch_client(
+        "claude",
+        gateway_url="http://127.0.0.1:11434",
+        model=None,
+        list_only=True,
+        dry_run=False,
+        extra_args=[],
+    )
+    assert rc == 0
+    output = capsys.readouterr().out
+    assert "qwen3-coder:30b" in output
+    assert "phi4:14b" not in output
+
+
+def test_v031_claude_rejects_explicit_local_model_without_tools(monkeypatch):
+    model = CatalogModel("phi4:14b", "ollama")
+    monkeypatch.setattr(MODULE, "fetch_catalog", lambda *_args, **_kwargs: [model])
+    monkeypatch.setattr(
+        MODULE,
+        "fetch_model_capabilities",
+        lambda _gateway, item, timeout=MODULE.DEFAULT_TIMEOUT_SECONDS: CatalogModel(item.name, item.owner, frozenset({"completion"})),
+    )
+    with pytest.raises(MODULE.LauncherError, match="does not advertise the 'tools' capability"):
+        MODULE.launch_client(
+            "claude",
+            gateway_url="http://127.0.0.1:11434",
+            model="phi4:14b",
+            list_only=False,
+            dry_run=True,
+            extra_args=[],
+        )
+
+
+def test_v031_windows_desktop_apps_fall_back_to_start_menu(monkeypatch):
+    monkeypatch.setattr(MODULE, "_is_windows", lambda: True)
+    monkeypatch.setattr(MODULE, "_is_macos", lambda: False)
+    monkeypatch.setattr(MODULE, "_first_existing", lambda _paths: None)
+    monkeypatch.setattr(
+        MODULE,
+        "_windows_start_apps",
+        lambda: [("ChatGPT", "OpenAI.ChatGPT_123!App"), ("Claude", "Anthropic.Claude_456!App")],
+    )
+
+    codex = MODULE.CodexAppAdapter().build("openai/gpt-5.6-luna", [], "http://127.0.0.1:11434", [])
+    claude = MODULE.ClaudeDesktopAdapter().build("openai/gpt-5.6-luna", [], "http://127.0.0.1:11434", [])
+
+    assert codex.command == ["explorer.exe", r"shell:AppsFolder\OpenAI.ChatGPT_123!App"]
+    assert claude.command == ["explorer.exe", r"shell:AppsFolder\Anthropic.Claude_456!App"]
+
+
+def test_v031_desktop_aliases_are_accepted():
+    assert MODULE.canonical_client("codexapp") == "codex-app"
+    assert MODULE.canonical_client("claudedesktop") == "claude-desktop"

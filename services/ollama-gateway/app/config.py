@@ -22,7 +22,22 @@ def _version() -> str:
                 return value
         except OSError:
             pass
-    return os.getenv("COFER_ONE_IA_VERSION", "dev").strip() or "dev"
+
+    configured = os.getenv("COFER_ONE_IA_VERSION", "").strip()
+    if configured:
+        return configured
+
+    # Source checkouts should report the repository version even when the
+    # Compose-only COFER_VERSION_FILE mount is absent (for example CI/tests).
+    try:
+        repository_version = Path(__file__).resolve().parents[3] / "VERSION"
+        value = repository_version.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    except (IndexError, OSError):
+        pass
+
+    return "dev"
 
 
 @dataclass(frozen=True)
@@ -31,6 +46,7 @@ class Settings:
     headroom_url: str = os.getenv("GATEWAY_UPSTREAM_URL", "http://headroom-gateway:8787").rstrip("/")
     litellm_url: str = os.getenv("LITELLM_URL", "http://litellm:4000").rstrip("/")
     chatgpt_litellm_url: str = os.getenv("CHATGPT_LITELLM_URL", "http://litellm-chatgpt:4000").rstrip("/")
+    ollama_backend_url: str = os.getenv("OLLAMA_BACKEND_URL", "http://host.docker.internal:11435").rstrip("/")
     litellm_master_key: str = os.getenv("LITELLM_MASTER_KEY", "")
     request_timeout_seconds: int = _int("GATEWAY_REQUEST_TIMEOUT_SECONDS", 600)
     model_refresh_seconds: int = _int("GATEWAY_MODEL_REFRESH_SECONDS", 15)

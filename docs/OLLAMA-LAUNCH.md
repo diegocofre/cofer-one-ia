@@ -25,7 +25,7 @@ opencode          OpenCode
 qwen              Qwen Code
 ```
 
-Aliases: `claude-code`, `copilot-cli`, `qwen-code`.
+Aliases: `claude-code`, `claudedesktop`, `codexapp`, `copilot-cli`, `qwen-code`.
 
 List them with:
 
@@ -78,10 +78,10 @@ These integrations do not modify the user's persistent client configuration:
 
 - Codex CLI uses the Cofer OpenAI-compatible `/v1/responses` route with
   process-scoped provider overrides.
-- Claude Code uses a process-scoped `ANTHROPIC_BASE_URL` plus a Cofer-only
-  `ANTHROPIC_API_KEY`. `collama` removes inherited `ANTHROPIC_AUTH_TOKEN` and
-  `CLAUDE_CODE_OAUTH_TOKEN` values for that child process so an existing
-  Claude `/login` session cannot conflict with gateway authentication.
+- Claude Code uses a process-scoped `ANTHROPIC_BASE_URL` plus the documented
+  gateway bearer contract in `ANTHROPIC_AUTH_TOKEN`. `collama` removes inherited
+  `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` values for that child process
+  so an existing Claude `/login` session cannot conflict with gateway authentication.
 - OpenCode receives `OPENCODE_CONFIG_CONTENT` containing the complete runtime
   Cofer catalog.
 - Copilot CLI uses its provider base URL / wire API environment variables.
@@ -154,7 +154,9 @@ root `model`, a dedicated `cofer-one-ia-app` provider and a generated model
 catalog containing the currently published Cofer models. The provider uses the
 Responses wire API and points at `http://127.0.0.1:11434/v1`.
 
-Codex App is supported on Windows and macOS.
+Codex App is supported on Windows and macOS. On Windows the launcher first checks
+known executable locations, then resolves the installed ChatGPT/Codex Start-menu
+AppUserModelID so Microsoft Store/MSIX installations can be launched without a stable EXE path.
 
 ### Claude Desktop
 
@@ -169,9 +171,10 @@ The Cofer gateway decodes that alias back to the real logical model before
 provider routing. This keeps the real catalog name authoritative while satisfying
 Claude Desktop's model-name validation.
 
-Claude Desktop is supported on Windows and macOS. Always keep the backup state
-until the integration has been verified locally, and use `--restore` to return
-to the pre-Cofer profile.
+Claude Desktop is supported on Windows and macOS. On Windows, executable lookup
+falls back to the installed Start-menu AppUserModelID for packaged/MSIX builds. Always
+keep the backup state until the integration has been verified locally, and use
+`--restore` to return to the pre-Cofer profile.
 
 ## Catalog authority
 
@@ -224,10 +227,12 @@ for Responses-native agents such as Codex. Claude Code continues to speak Anthro
 The gateway also exposes `/v1/messages/count_tokens` and sends that control request
 directly to the same Anthropic-compatible LiteLLM deployment.
 
-For third-party compatibility, `collama launch claude` forces `ENABLE_TOOL_SEARCH=false`
-and `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. Claude Code therefore sends ordinary
-tool definitions instead of Anthropic-only server-side ToolSearch types and beta-only
-`defer_loading` fields that non-Anthropic providers may reject.
+For third-party compatibility, `collama launch claude` forces `ENABLE_TOOL_SEARCH=0`
+and `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. The gateway independently removes
+Anthropic-only `tool_search_tool_*` definitions and beta-only `defer_loading` metadata
+before Ollama/OpenRouter forwarding. For Local and Ollama Cloud models, the launcher
+also probes `/api/show`; models that explicitly lack the `tools` capability are omitted
+from Claude's selector and rejected when named explicitly.
 
 For local coding/agent models, use a large context window appropriate for the client;
 Ollama's Codex integration recommends at least 64K. Cloud models are served through the

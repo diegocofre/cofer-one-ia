@@ -4,6 +4,18 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-28
+
+### Fixed
+
+- Claude Code gateway authentication now uses Anthropic's documented `ANTHROPIC_AUTH_TOKEN` bearer contract while clearing inherited API-key/OAuth credentials.
+- Claude ToolSearch/deferred-tool beta schemas are disabled client-side and sanitized at the gateway before Ollama/OpenRouter forwarding.
+- ChatGPT-subscription Claude requests normalize both top-level and message-level system instructions into user content for Responses compatibility.
+- Claude model selection probes physical Ollama `/api/show` capabilities and hides/rejects local or cloud models that explicitly lack `tools`.
+- Windows Codex/ChatGPT and Claude Desktop launching falls back to Start-menu AppUserModelIDs when no stable executable path exists.
+- Added `codexapp` and `claudedesktop` launcher aliases.
+- Added regression contracts for the observed Claude auth, ToolSearch, system-role, capability-filter and Windows packaged-app failures.
+
 ## [0.3.0] - 2026-07-27
 
 - Claude Code launches through Cofer One IA now force `ENABLE_TOOL_SEARCH=false` and `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` so third-party providers receive standard tool schemas instead of Anthropic-only server-side ToolSearch/deferred-tool beta types.
@@ -81,7 +93,8 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Initial public-ready project scaffold.
 - Ollama-compatible facade, Headroom, LiteLLM, Ollama/OpenRouter routing and managed upstream workflow.
 
-[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/diegocofre/cofer-one-ia/compare/v0.1.1...v0.1.2
