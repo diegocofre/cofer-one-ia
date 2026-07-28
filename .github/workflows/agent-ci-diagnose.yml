@@ -1,9 +1,9 @@
 name: Agent diagnose aggregate CI
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/v0.3.1-launch-compat
+      - main
 
 permissions:
   contents: write
@@ -16,12 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/v0.3.1-launch-compat
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
       - name: Install dependencies
-        run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
+        run: python -m pip install -q -e 'services/ollama-gateway[dev]' pyyaml
       - name: Capture aggregate pytest result
         shell: bash
         run: |
