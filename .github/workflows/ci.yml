@@ -73,6 +73,56 @@ jobs:
           assert services['litellm']['environment']['DISABLE_ADMIN_UI'] == '${LITELLM_DISABLE_ADMIN_UI:-True}'
           PY
 
+  launch-matrix:
+    name: Discover launch integrations
+    runs-on: ubuntu-latest
+    outputs:
+      clients: ${{ steps.matrix.outputs.clients }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - id: matrix
+        name: Build client matrix
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import importlib.util
+          import json
+          import sys
+          from pathlib import Path
+
+          module_path = Path('collama/collama_launch.py')
+          spec = importlib.util.spec_from_file_location('collama_launch_ci', module_path)
+          assert spec and spec.loader
+          module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
+          spec.loader.exec_module(module)
+          clients = sorted(module.ADAPTERS)
+          assert clients, 'collama launch has no enabled integrations'
+          print('clients=' + json.dumps(clients))
+          PY
+
+  launch-clients:
+    name: Launch contract / ${{ matrix.client }}
+    needs: launch-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        client: ${{ fromJSON(needs.launch-matrix.outputs.clients) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install launch test dependencies
+        run: python -m pip install pytest
+      - name: Test collama launch adapter
+        run: python -m pytest "services/ollama-gateway/tests/test_collama_launch_matrix.py::test_launch_smoke_for_every_enabled_client[${{ matrix.client }}]"
+
   windows-scripts:
     runs-on: windows-latest
     steps:
