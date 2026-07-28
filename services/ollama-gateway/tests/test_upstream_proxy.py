@@ -378,3 +378,69 @@ async def test_chatgpt_count_tokens_uses_same_system_compatibility_transform(cli
     assert call[1] == "http://litellm-chatgpt:4000/v1/messages/count_tokens"
     assert "system" not in forwarded
     assert forwarded["messages"][0]["content"].startswith("[System instructions]")
+
+@pytest.mark.asyncio
+async def test_v031_openrouter_anthropic_strips_toolsearch_schema(client):
+    FakeAsyncClient.response = FakeResponse()
+    payload = {
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "messages": [{"role": "user", "content": "read the repository"}],
+        "tools": [
+            {"type": "tool_search_tool_regex_20251119", "name": "ToolSearch"},
+            {
+                "name": "Read",
+                "description": "Read a file",
+                "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}},
+                "defer_loading": True,
+            },
+        ],
+    }
+    response = await client.post("/v1/messages", json=payload)
+    assert response.status_code == 200
+    call = FakeAsyncClient.instances[-1].calls[0]
+    forwarded = __import__("json").loads(call[2]["content"])
+    assert forwarded["model"] == "cofer-anthropic--nvidia/nemotron-3-super-120b-a12b:free"
+    assert len(forwarded["tools"]) == 1
+    assert forwarded["tools"][0]["name"] == "Read"
+    assert "defer_loading" not in forwarded["tools"][0]
+    assert forwarded["tools"][0]["input_schema"]["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_v031_chatgpt_interactive_system_roles_are_folded_into_user_content(client):
+    FakeAsyncClient.response = FakeResponse()
+    payload = {
+        "model": "openai/gpt-5.6-luna",
+        "system": [{"type": "text", "text": "Top-level Claude Code instructions"}],
+        "messages": [
+            {"role": "system", "content": [{"type": "text", "text": "Interactive session instructions"}]},
+            {"role": "user", "content": "Which model are we using?"},
+        ],
+    }
+    response = await client.post("/v1/messages", json=payload)
+    assert response.status_code == 200
+    call = FakeAsyncClient.instances[-1].calls[0]
+    forwarded = __import__("json").loads(call[2]["content"])
+    assert "system" not in forwarded
+    assert all(message.get("role") != "system" for message in forwarded["messages"] if isinstance(message, dict))
+    first = forwarded["messages"][0]
+    assert first["role"] == "user"
+    assert "Top-level Claude Code instructions" in first["content"]
+    assert "Interactive session instructions" in first["content"]
+    assert "Which model are we using?" in first["content"]
+
+
+@pytest.mark.asyncio
+async def test_v031_api_show_uses_physical_ollama_capabilities_for_local_models(monkeypatch, client):
+    async def fake_models(force=False):
+        return ["phi4:14b"]
+
+    async def fake_show(name):
+        assert name == "phi4:14b"
+        return {"model": name, "capabilities": ["completion"]}
+
+    monkeypatch.setattr(main_module, "_models", fake_models)
+    monkeypatch.setattr(main_module, "_physical_ollama_show", fake_show)
+    response = await client.post("/api/show", json={"model": "phi4:14b"})
+    assert response.status_code == 200
+    assert response.json()["capabilities"] == ["completion"]

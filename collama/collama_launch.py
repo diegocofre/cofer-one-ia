@@ -147,6 +147,7 @@ class LauncherError(RuntimeError):
 class CatalogModel:
     name: str
     owner: str
+    capabilities: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -202,27 +203,23 @@ class ClaudeAdapter:
 
     def build(self, model: str, models: Sequence[CatalogModel], gateway_url: str, extra_args: Sequence[str]) -> LaunchSpec:
         del models
-        # Claude Code can retain a /login-managed credential while collama is
-        # launching it against a third-party gateway.  Supplying
-        # ANTHROPIC_AUTH_TOKEN in that situation triggers Claude's token/API-key
-        # conflict detection and can make the managed credential win.  A
-        # process-scoped ANTHROPIC_API_KEY cleanly selects gateway/API-key mode;
-        # the Cofer gateway strips this client credential before adding its own
-        # internal LiteLLM authentication.
+        # Anthropic documents ANTHROPIC_AUTH_TOKEN as the static bearer-token
+        # contract for Claude Code behind an LLM gateway. Keep authentication
+        # process-scoped and remove both direct API-key and OAuth credentials so
+        # an existing /login session cannot win credential precedence.
         env = {
             "ANTHROPIC_BASE_URL": gateway_url.rstrip("/"),
-            "ANTHROPIC_API_KEY": "cofer-one-ia",
+            "ANTHROPIC_AUTH_TOKEN": "cofer-one-ia",
             "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
             "DISABLE_TELEMETRY": "1",
             "DISABLE_ERROR_REPORTING": "1",
             "DISABLE_FEEDBACK_COMMAND": "1",
             "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
-            # Claude's server-side ToolSearch is Anthropic-specific. Third-party
-            # providers (including many OpenRouter routes) can reject the
-            # tool_search_tool_* schema. Force standard upfront tool definitions
-            # and strip experimental beta-only fields such as defer_loading.
-            "ENABLE_TOOL_SEARCH": "false",
+            # Claude Code has shipped code paths where the experimental-beta
+            # switch alone did not suppress ToolSearch. Force ToolSearch off at
+            # the client; the gateway also sanitizes Anthropic-only tool types.
+            "ENABLE_TOOL_SEARCH": "0",
             "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
             "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
             "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
@@ -232,7 +229,7 @@ class ClaudeAdapter:
         return LaunchSpec(
             _with_extra(["claude", "--model", model], extra_args),
             env,
-            unset_env=("ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"),
+            unset_env=("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
         )
 
 
@@ -430,6 +427,62 @@ def _first_existing(paths: Sequence[Path]) -> Path | None:
     return None
 
 
+def _windows_start_apps() -> list[tuple[str, str]]:
+    """Return Start-menu app names and AppUserModelIDs for the current user."""
+    powershell = (
+        shutil.which("pwsh.exe")
+        or shutil.which("powershell.exe")
+        or shutil.which("pwsh")
+        or shutil.which("powershell")
+    )
+    if powershell is None:
+        return []
+    command = [
+        powershell,
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return []
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return []
+    rows = [payload] if isinstance(payload, dict) else payload if isinstance(payload, list) else []
+    result: list[tuple[str, str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("Name")
+        app_id = row.get("AppID")
+        if isinstance(name, str) and name.strip() and isinstance(app_id, str) and app_id.strip():
+            result.append((name.strip(), app_id.strip()))
+    return result
+
+
+def _windows_start_app_id(preferred_names: Sequence[str]) -> str | None:
+    apps = _windows_start_apps()
+    for preferred in preferred_names:
+        wanted = preferred.casefold()
+        for name, app_id in apps:
+            if name.casefold() == wanted:
+                return app_id
+    return None
+
+
 def _codex_app_candidates() -> list[Path]:
     if _is_macos():
         return [Path("/Applications/ChatGPT.app"), Path("/Applications/Codex.app"), Path.home() / "Applications" / "ChatGPT.app", Path.home() / "Applications" / "Codex.app"]
@@ -460,15 +513,23 @@ def _codex_app_candidates() -> list[Path]:
     return []
 
 
-def _launch_desktop_app(candidates: Sequence[Path], mac_name: str) -> LaunchSpec:
+def _launch_desktop_app(
+    candidates: Sequence[Path],
+    mac_name: str,
+    windows_app_names: Sequence[str] = (),
+) -> LaunchSpec:
     if _is_macos():
         app = _first_existing(candidates)
         return LaunchSpec(["open", str(app)]) if app is not None else LaunchSpec(["open", "-a", mac_name])
     if _is_windows():
         executable = _first_existing(candidates)
-        if executable is None:
-            raise LauncherError(f"{mac_name} executable was not found")
-        return LaunchSpec([str(executable)])
+        if executable is not None:
+            return LaunchSpec([str(executable)])
+        app_id = _windows_start_app_id(windows_app_names)
+        if app_id is not None:
+            return LaunchSpec(["explorer.exe", f"shell:AppsFolder\\{app_id}"])
+        searched = ", ".join(windows_app_names) or mac_name
+        raise LauncherError(f"{mac_name} executable/Start app was not found (searched: {searched})")
     raise LauncherError(f"{mac_name} launch is supported only on Windows and macOS")
 
 
@@ -565,7 +626,7 @@ class CodexAppAdapter:
         del model, models, gateway_url
         if extra_args:
             raise LauncherError("Codex App does not accept extra launch arguments")
-        return _launch_desktop_app(_codex_app_candidates(), "ChatGPT")
+        return _launch_desktop_app(_codex_app_candidates(), "ChatGPT", ("ChatGPT", "Codex"))
 
 
 def _claude_desktop_roots() -> tuple[list[Path], list[Path]]:
@@ -658,7 +719,7 @@ class ClaudeDesktopAdapter:
         del model, models, gateway_url
         if extra_args:
             raise LauncherError("Claude Desktop does not accept extra launch arguments")
-        return _launch_desktop_app(_claude_desktop_candidates(), "Claude")
+        return _launch_desktop_app(_claude_desktop_candidates(), "Claude", ("Claude", "Claude Desktop"))
 
 
 ADAPTERS: dict[str, ClientAdapter] = {
@@ -673,6 +734,8 @@ ADAPTERS: dict[str, ClientAdapter] = {
 }
 ALIASES = {
     "claude-code": "claude",
+    "claudedesktop": "claude-desktop",
+    "codexapp": "codex-app",
     "copilot-cli": "copilot",
     "qwen-code": "qwen",
 }
@@ -735,6 +798,46 @@ def catalog_group(model: CatalogModel) -> str:
     if "/" in model.name or model.name == "openrouter-auto":
         return "OpenRouter"
     return "Local"
+
+
+def fetch_model_capabilities(
+    gateway_url: str,
+    model: CatalogModel,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+) -> CatalogModel:
+    """Probe the gateway's Ollama-compatible show endpoint for model capabilities."""
+    url = f"{gateway_url.rstrip('/')}/api/show"
+    body = json.dumps({"model": model.name}).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return model
+    capabilities = payload.get("capabilities") if isinstance(payload, dict) else None
+    if not isinstance(capabilities, list) or not all(isinstance(item, str) for item in capabilities):
+        return model
+    return CatalogModel(model.name, model.owner, frozenset(item.casefold() for item in capabilities))
+
+
+def claude_compatible_models(models: Sequence[CatalogModel], gateway_url: str) -> list[CatalogModel]:
+    """Keep Claude Code models that are known to support client-side tools.
+
+    Local/Ollama Cloud models are probed from physical Ollama through the
+    gateway. Remote providers remain fail-open because their capabilities are
+    provider-managed and a missing capability probe must not hide valid routes.
+    """
+    result: list[CatalogModel] = []
+    for item in models:
+        candidate = fetch_model_capabilities(gateway_url, item) if catalog_group(item) in {"Local", "Ollama Cloud"} else item
+        if candidate.capabilities is None or "tools" in candidate.capabilities:
+            result.append(candidate)
+    return result
 
 
 def grouped_catalog(models: Sequence[CatalogModel]) -> list[tuple[str, list[CatalogModel]]]:
@@ -876,16 +979,24 @@ def launch_client(
         return 0
 
     models = fetch_catalog(gateway_url)
-    names = {item.name for item in models}
+    published_names = {item.name for item in models}
+    if client == "claude":
+        models = claude_compatible_models(models, gateway_url)
+    compatible_names = {item.name for item in models}
     if list_only:
         print_catalog(models, adapter.display_name)
         return 0
 
     selected = model or choose_model(models, adapter.display_name)
-    if selected not in names:
+    if selected not in published_names:
         raise LauncherError(
             f"model '{selected}' is not published by Cofer One IA. "
             f"Run 'collama launch {client} --list' to see the active catalog."
+        )
+    if selected not in compatible_names:
+        raise LauncherError(
+            f"model '{selected}' is not compatible with {adapter.display_name}: "
+            "the model does not advertise the 'tools' capability"
         )
 
     if config_only and configure_method is None:

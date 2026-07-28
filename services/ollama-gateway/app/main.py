@@ -223,25 +223,38 @@ def _anthropic_system_text(system: Any) -> str:
 def _chatgpt_compatible_anthropic_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Adapt Claude Messages payloads to ChatGPT subscription constraints.
 
-    ChatGPT's Codex backend rejects system-role messages. LiteLLM maps the
-    Anthropic top-level ``system`` field to that forbidden role, so for this
-    provider only we preserve the instructions as the first user content
-    instead. All tool/message blocks remain otherwise untouched.
+    The ChatGPT/Codex Responses backend rejects system-role messages. Normalize
+    both Anthropic's top-level ``system`` field and defensive system-role
+    message variants into the first user turn before LiteLLM translates the
+    request.
     """
-    system_text = _anthropic_system_text(payload.get("system"))
-    if not system_text:
+    result = dict(payload)
+    system_parts: list[str] = []
+    top_level = _anthropic_system_text(payload.get("system"))
+    if top_level:
+        system_parts.append(top_level)
+    result.pop("system", None)
+
+    raw_messages = result.get("messages")
+    messages: list[Any] = []
+    if isinstance(raw_messages, list):
+        for item in raw_messages:
+            if not isinstance(item, dict):
+                messages.append(item)
+                continue
+            message = dict(item)
+            if message.get("role") == "system":
+                text = _anthropic_system_text(message.get("content"))
+                if text:
+                    system_parts.append(text)
+                continue
+            messages.append(message)
+
+    if not system_parts:
         return payload
 
-    result = dict(payload)
-    result.pop("system", None)
-    messages = result.get("messages")
-    messages = (
-        [dict(item) if isinstance(item, dict) else item for item in messages]
-        if isinstance(messages, list)
-        else []
-    )
+    system_text = "\n\n".join(system_parts)
     prefix = f"[System instructions]\n{system_text}"
-
     for index, message in enumerate(messages):
         if not isinstance(message, dict) or message.get("role") != "user":
             continue
@@ -275,23 +288,40 @@ def _local_ollama_supports_thinking(model: str) -> bool:
 
 
 def _anthropic_main_compatible_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize Claude controls for main-router providers.
+    """Normalize Claude controls for non-Anthropic main-router providers.
 
-    Claude Code sends adaptive/extended-thinking controls even when the chosen
-    local Ollama model does not implement thinking. Ollama rejects those
-    controls rather than silently ignoring them. For physical local models we
-    preserve thinking only for known thinking-capable families; remote routes
-    are left untouched and provider/LiteLLM capability handling applies.
+    ToolSearch is an Anthropic server-side tool family and must not reach
+    Ollama/OpenRouter providers. Standard client-side tools are preserved, with
+    beta-only ``defer_loading`` metadata removed. Local non-thinking models also
+    have Claude's adaptive reasoning controls removed.
     """
-    model = payload.get("model")
+    result = dict(payload)
+    tools = result.get("tools")
+    if isinstance(tools, list):
+        normalized_tools: list[Any] = []
+        for tool in tools:
+            if not isinstance(tool, dict):
+                normalized_tools.append(tool)
+                continue
+            tool_type = tool.get("type")
+            if isinstance(tool_type, str) and tool_type.startswith("tool_search_tool_"):
+                continue
+            normalized = dict(tool)
+            normalized.pop("defer_loading", None)
+            normalized_tools.append(normalized)
+        if normalized_tools:
+            result["tools"] = normalized_tools
+        else:
+            result.pop("tools", None)
+
+    model = result.get("model")
     if not isinstance(model, str):
-        return payload
+        return result
     resolved = resolve_launch_alias(model)
     is_physical_local = "/" not in resolved and not resolved.endswith(":cloud")
     if not is_physical_local or _local_ollama_supports_thinking(resolved):
-        return payload
+        return result
 
-    result = dict(payload)
     result.pop("thinking", None)
     result.pop("reasoning_effort", None)
     output_config = result.get("output_config")
@@ -408,6 +438,19 @@ async def tags(refresh: bool = False) -> dict[str, Any]:
     }
 
 
+async def _physical_ollama_show(name: str) -> dict[str, Any] | None:
+    """Return physical Ollama metadata when it is reachable and authoritative."""
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            response = await client.post(f"{settings.ollama_backend_url}/api/show", json={"model": name})
+            if not response.is_success:
+                return None
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 @app.post("/api/show")
 async def show(request: Request) -> dict[str, Any]:
     body = await request.json()
@@ -416,6 +459,12 @@ async def show(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="name/model is required")
     if name not in await _models():
         raise HTTPException(status_code=404, detail=f"unknown model: {name}")
+
+    if _model_owner(name) in {"ollama", "ollama-cloud"}:
+        physical = await _physical_ollama_show(name)
+        if physical is not None:
+            return physical
+
     return {
         "license": "Provider/model specific",
         "modelfile": "# Virtual model routed by Cofer One IA",

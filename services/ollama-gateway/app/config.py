@@ -31,6 +31,7 @@ class Settings:
     headroom_url: str = os.getenv("GATEWAY_UPSTREAM_URL", "http://headroom-gateway:8787").rstrip("/")
     litellm_url: str = os.getenv("LITELLM_URL", "http://litellm:4000").rstrip("/")
     chatgpt_litellm_url: str = os.getenv("CHATGPT_LITELLM_URL", "http://litellm-chatgpt:4000").rstrip("/")
+    ollama_backend_url: str = os.getenv("OLLAMA_BACKEND_URL", "http://host.docker.internal:11435").rstrip("/")
     litellm_master_key: str = os.getenv("LITELLM_MASTER_KEY", "")
     request_timeout_seconds: int = _int("GATEWAY_REQUEST_TIMEOUT_SECONDS", 600)
     model_refresh_seconds: int = _int("GATEWAY_MODEL_REFRESH_SECONDS", 15)
