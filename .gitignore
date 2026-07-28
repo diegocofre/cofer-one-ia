@@ -8,6 +8,8 @@ data/headroom/*/*
 !data/headroom/*/.gitkeep
 data/litellm/chatgpt/*
 !data/litellm/chatgpt/.gitkeep
+data/cupass-bridge/*
+!data/cupass-bridge/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
 config/generated/*
