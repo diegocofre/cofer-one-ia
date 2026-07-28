@@ -22,7 +22,22 @@ def _version() -> str:
                 return value
         except OSError:
             pass
-    return os.getenv("COFER_ONE_IA_VERSION", "dev").strip() or "dev"
+
+    configured = os.getenv("COFER_ONE_IA_VERSION", "").strip()
+    if configured:
+        return configured
+
+    # Source checkouts should report the repository version even when the
+    # Compose-only COFER_VERSION_FILE mount is absent (for example CI/tests).
+    try:
+        repository_version = Path(__file__).resolve().parents[3] / "VERSION"
+        value = repository_version.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    except (IndexError, OSError):
+        pass
+
+    return "dev"
 
 
 @dataclass(frozen=True)
