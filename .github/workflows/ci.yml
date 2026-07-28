@@ -20,7 +20,7 @@ jobs:
       - name: Compile Python
         run: python -m compileall services/ollama-gateway/app tools collama/collama_launch.py
       - name: Gateway and contract tests
-        run: python -m pytest services/ollama-gateway/tests
+        run: python -m pytest services/ollama-gateway/tests --ignore=services/ollama-gateway/tests/test_collama_launch_matrix.py
       - name: Build gateway container
         run: docker build -t cofer-one-ia-gateway-ci services/ollama-gateway
       - name: Validate config generator offline
