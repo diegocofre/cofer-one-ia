@@ -14,7 +14,7 @@ def test_fastapi_app_imports_and_root_responds():
     assert response.status_code == 200
     payload = response.json()
     assert payload["name"] == "cofer-one-ia"
-    assert payload["service"] == "ollama-gateway"
+    assert payload["service"] == "universal-gateway"
 
 
 def test_response_routes_disable_fastapi_response_model_inference():
