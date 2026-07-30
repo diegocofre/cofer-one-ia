@@ -27,6 +27,13 @@ async def test_v1_models_exposes_logical_catalog(monkeypatch, client):
     assert [item["id"] for item in response.json()["data"]] == ["local-qwen", "chatgpt-codex"]
 
 
+def test_private_deployment_names_map_back_to_public_catalog():
+    assert main._public_model_name("cor-google/gemma-4-31b-it:free") == "google/gemma-4-31b-it:free"
+    assert main._public_model_name("can-qwen3:8b") == "qwen3:8b"
+    assert main._public_model_name("cgp-gpt-5.6-luna") == "openai/gpt-5.6-luna"
+    assert main._public_model_name("qwen3:8b") == "qwen3:8b"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("endpoint", "expected_path"),
