@@ -94,7 +94,7 @@ hosted by another provider. Cofer keeps the public model name unchanged and rewr
 only inside the gateway.
 
 For local Ollama, Ollama Cloud and OpenRouter, `/v1/messages` is routed to a private
-`cofer-anthropic--*` LiteLLM deployment backed by Chat Completions (`ollama_chat/*` or
+`can-*` LiteLLM deployment backed by Chat Completions (`ollama_chat/*` or
 `openrouter/*`). Codex/OpenAI clients keep their separate native Responses deployments.
 This split avoids passing Claude's tool definitions through the Anthropic-to-Responses
 bridge. For physical local Ollama models that do not implement thinking, Cofer also removes
@@ -237,4 +237,3 @@ from Claude's selector and rejected when named explicitly.
 For local coding/agent models, use a large context window appropriate for the client;
 Ollama's Codex integration recommends at least 64K. Cloud models are served through the
 signed-in physical Ollama daemon and use their cloud context capabilities.
-
