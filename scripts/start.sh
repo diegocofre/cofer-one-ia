@@ -3,6 +3,8 @@
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
 
+step "Ensuring Cofer internal secrets"
+ensure_cofer_secrets
 step "Ensuring physical Ollama is available"
 ensure_physical_ollama
 step "Starting Cofer One IA services"
