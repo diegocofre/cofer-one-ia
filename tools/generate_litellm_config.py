@@ -261,3 +261,7 @@ def main() -> int:
     print(f"Wrote {output}", file=sys.stderr)
     print(f"Wrote {chatgpt_output}", file=sys.stderr)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
