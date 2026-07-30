@@ -36,10 +36,16 @@ The gateway merges both LiteLLM model catalogs and publishes stable public
 names. It dispatches `openai/...` subscription aliases directly to the isolated ChatGPT
 LiteLLM sidecar, bypassing Headroom. OpenRouter keeps native public slugs such as
 `google/gemma-4-31b-it:free`, but the gateway rewrites them to neutral internal
-`cofer-openrouter--...` deployment IDs before Headroom/LiteLLM. This prevents the
+`cor-...` deployment IDs before Headroom/LiteLLM. This prevents the
 Responses API from treating the vendor segment (`google/`, `nvidia/`, etc.) as a
 provider selector. LiteLLM then uses OpenRouter's OpenAI-compatible API base with
 `OPENROUTER_API_KEY`. Local Ollama models keep their native names.
+
+The compact internal prefixes are private routing identifiers, not public model aliases:
+
+- `cor-`: Cofer OpenRouter Responses/OpenAI-compatible deployment.
+- `can-`: Cofer Anthropic Messages compatibility deployment.
+- `cgp-`: Cofer ChatGPT subscription deployment.
 
 ## Authentication boundaries
 
@@ -83,7 +89,7 @@ per logical model:
 
 - OpenAI-surface clients such as Codex use the native OpenAI-compatible Responses route
   (`openai/<model>` for Ollama, or OpenRouter's OpenAI-compatible endpoint).
-- Anthropic-surface clients such as Claude Code use a private `cofer-anthropic--*`
+- Anthropic-surface clients such as Claude Code use a private `can-*`
   deployment backed by the provider's Chat Completions transport (`ollama_chat/*` or
   `openrouter/*`). This avoids routing Claude tool schemas through the newer
   Anthropic-to-Responses bridge while preserving native Responses for Codex.
