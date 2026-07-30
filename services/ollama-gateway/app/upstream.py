@@ -11,10 +11,9 @@ from fastapi.responses import Response, StreamingResponse
 
 from .config import settings
 
-# Strip transport state, client credentials, and headers that could make a
-# caller override Cofer One IA's internal routing. Everything else is treated
-# as protocol metadata and forwarded (Codex x-codex-*, Anthropic beta/version,
-# OpenAI beta/session headers, SDK telemetry headers, etc.).
+# Strip transport state, client credentials, headers that could make a caller
+# override Cofer One IA's internal routing, and Anthropic beta negotiation that
+# is not portable to the non-Anthropic providers behind the gateway.
 _HOP_BY_HOP_HEADERS = {
     "connection",
     "keep-alive",
@@ -38,7 +37,11 @@ _ROUTING_OVERRIDE_HEADERS = {
     "x-headroom-base-url",
     "x-litellm-api-key",
 }
+_UNSUPPORTED_PROTOCOL_HEADERS = {
+    "anthropic-beta",
+}
 _RESPONSE_BLOCK_HEADERS = _HOP_BY_HOP_HEADERS | {"set-cookie", "content-length"}
+_ANTHROPIC_PATHS = {"/v1/messages", "/v1/messages/count_tokens"}
 
 
 def filter_request_headers(headers: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -50,6 +53,8 @@ def filter_request_headers(headers: Iterable[tuple[str, str]]) -> dict[str, str]
         if lowered in _CLIENT_CREDENTIAL_HEADERS:
             continue
         if lowered in _ROUTING_OVERRIDE_HEADERS or lowered.startswith("x-headroom-"):
+            continue
+        if lowered in _UNSUPPORTED_PROTOCOL_HEADERS:
             continue
         result[key] = value
     return result
@@ -88,6 +93,100 @@ def _upstream_url(request: Request, path: str, base_url: str | None = None) -> s
     return url
 
 
+def _anthropic_payload_requires_direct_litellm(payload: dict[str, Any] | None) -> bool:
+    """Return true when Headroom must not touch Anthropic beta/tool-search payloads."""
+    if not isinstance(payload, dict):
+        return False
+    tools = payload.get("tools")
+    if not isinstance(tools, list):
+        return False
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        tool_type = tool.get("type")
+        if isinstance(tool_type, str) and tool_type.startswith("tool_search_tool_"):
+            return True
+        if tool.get("defer_loading") is not None:
+            return True
+    return False
+
+
+def _anthropic_error_type(status_code: int) -> str:
+    if status_code in {400, 422}:
+        return "invalid_request_error"
+    if status_code == 401:
+        return "authentication_error"
+    if status_code == 402:
+        return "billing_error"
+    if status_code == 403:
+        return "permission_error"
+    if status_code == 404:
+        return "not_found_error"
+    if status_code == 413:
+        return "request_too_large"
+    if status_code == 429:
+        return "rate_limit_error"
+    if status_code == 529:
+        return "overloaded_error"
+    return "api_error"
+
+
+def _anthropic_error_message(content: bytes, status_code: int) -> str:
+    text = content.decode("utf-8", errors="replace").strip()
+    if not text:
+        return f"Upstream request failed with HTTP {status_code}"
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+        if isinstance(error, str) and error.strip():
+            return error.strip()
+        detail = payload.get("detail")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    return text
+
+
+def _anthropic_error_response(
+    *,
+    status_code: int,
+    content: bytes,
+    headers: httpx.Headers,
+) -> Response:
+    outgoing_headers = response_headers(headers)
+    outgoing_headers = {
+        key: value
+        for key, value in outgoing_headers.items()
+        if key.lower() != "content-type"
+    }
+    body = {
+        "type": "error",
+        "error": {
+            "type": _anthropic_error_type(status_code),
+            "message": _anthropic_error_message(content, status_code),
+        },
+    }
+    return Response(
+        content=json.dumps(body, ensure_ascii=False, separators=(",", ":")),
+        status_code=status_code,
+        headers=outgoing_headers,
+        media_type="application/json",
+    )
+
+
+def _is_chatgpt_anthropic_request(original_payload: dict[str, Any] | None) -> bool:
+    if not isinstance(original_payload, dict):
+        return False
+    model = original_payload.get("model")
+    return isinstance(model, str) and model.startswith("openai/")
+
+
 async def proxy_json_request(
     request: Request,
     path: str,
@@ -107,6 +206,7 @@ async def proxy_json_request(
             payload = parsed
     except Exception:
         payload = None
+    original_payload = dict(payload) if isinstance(payload, dict) else None
 
     payload_changed = False
     if payload is not None and payload_transformer is not None:
@@ -131,7 +231,22 @@ async def proxy_json_request(
     if stream is None:
         stream = bool(payload.get("stream", False)) if payload is not None else False
 
-    url = _upstream_url(request, path, upstream_base_url)
+    selected_base_url = upstream_base_url
+    selected_extra_headers = extra_upstream_headers
+    if path == "/v1/messages":
+        configured_base = (selected_base_url or settings.headroom_url).rstrip("/")
+        headroom_base = settings.headroom_url.rstrip("/")
+        has_beta_header = "anthropic-beta" in {key.lower() for key in request.headers.keys()}
+        if configured_base == headroom_base and (
+            has_beta_header or _anthropic_payload_requires_direct_litellm(original_payload)
+        ):
+            # ToolSearch/deferred-tool requests must not pass through another
+            # semantic proxy after Cofer has normalized them. Route the already
+            # rewritten Anthropic-compatible deployment directly to LiteLLM.
+            selected_base_url = settings.litellm_url
+            selected_extra_headers = None
+
+    url = _upstream_url(request, path, selected_base_url)
     if not stream:
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
@@ -142,11 +257,21 @@ async def proxy_json_request(
                     headers=upstream_headers(
                         request,
                         include_internal_auth=include_internal_auth,
-                        extra_headers=extra_upstream_headers,
+                        extra_headers=selected_extra_headers,
                     ),
                 )
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Upstream unavailable: {exc}") from exc
+        if (
+            not response.is_success
+            and path in _ANTHROPIC_PATHS
+            and _is_chatgpt_anthropic_request(original_payload)
+        ):
+            return _anthropic_error_response(
+                status_code=response.status_code,
+                content=response.content,
+                headers=response.headers,
+            )
         return Response(
             content=response.content,
             status_code=response.status_code,
@@ -162,7 +287,7 @@ async def proxy_json_request(
             headers=upstream_headers(
                 request,
                 include_internal_auth=include_internal_auth,
-                extra_headers=extra_upstream_headers,
+                extra_headers=selected_extra_headers,
             ),
         )
         response = await client.send(upstream_request, stream=True)
@@ -173,10 +298,16 @@ async def proxy_json_request(
     if not response.is_success:
         content = await response.aread()
         status = response.status_code
-        headers = response_headers(response.headers)
+        headers = response.headers
         await response.aclose()
         await client.aclose()
-        return Response(content=content, status_code=status, headers=headers)
+        if path in _ANTHROPIC_PATHS and _is_chatgpt_anthropic_request(original_payload):
+            return _anthropic_error_response(
+                status_code=status,
+                content=content,
+                headers=headers,
+            )
+        return Response(content=content, status_code=status, headers=response_headers(headers))
 
     async def iterator() -> AsyncIterator[bytes]:
         try:
