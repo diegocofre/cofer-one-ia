@@ -4,6 +4,29 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+### Added
+
+- Added the bearer-protected `cupass-bridge` service for authenticated Cofer U Pass workers while keeping browser profiles, cookies, and interactive authentication on the host.
+- Added dynamic Cofer U Pass model discovery from worker registrations, including per-model `reasoning_effort` metadata.
+- Added collision-safe public aliases using `cupass/<provider>/<model>` across the OpenAI and Ollama model catalogs.
+- Added `/v1/models/{model}/capabilities` and the `/v1/files` resource plane for Cofer U Pass text/file/bundle exchange workflows.
+- Added OpenAI Responses, Chat Completions, and Ollama chat/generate routing for browser-backed models, with regression coverage for provider isolation and route precedence.
+
+### Changed
+
+- Cofer U Pass routing now keeps `profile_id` as worker-routing metadata while preserving the real provider `model` and `reasoning.effort` in the request, matching the Cofer U Pass 1.2 contract instead of the former `profile == model` assumption.
+- The Cofer U Pass gateway integration is layered over the existing 0.3.3 core so the compact `cor-` / `can-` / `cgp-` deployment prefixes and all existing Anthropic, ChatGPT subscription, OpenRouter, and Ollama routing remain intact.
+- Startup and reconfiguration generate `COFER_U_PASS_BRIDGE_KEY` for both fresh installations and upgrades and recreate the new bridge service as part of the managed stack.
+
+### Safety
+
+- Ambiguous Cofer U Pass model routes across active profiles fail closed instead of selecting an arbitrary browser session.
+- Unsupported reasoning efforts and tool/function-calling requests are rejected before a browser run is queued.
+- `cupass/` model names never fall through to Ollama or OpenRouter when the bridge or worker is unavailable.
+- Client credentials and cookies are not forwarded to the bridge; the gateway replaces them with the internal bridge bearer credential.
+
 ## [0.3.3] - 2026-07-30
 
 ### Changed
@@ -36,7 +59,6 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 - Claude Code launches through Cofer One IA now force `ENABLE_TOOL_SEARCH=false` and `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` so third-party providers receive standard tool schemas instead of Anthropic-only server-side ToolSearch/deferred-tool beta types.
 - Removed `kimi-k2.7-code:cloud` from the fixed Ollama Cloud catalog; `minimax-m3:cloud` and `nemotron-3-super:cloud` remain.
-
 - Fixed Codex/OpenRouter Responses routing by hiding provider-looking public aliases behind neutral LiteLLM deployment IDs and using OpenRouter's native OpenAI-compatible `/responses` endpoint with `OPENROUTER_API_KEY`.
 
 ### Added
@@ -76,7 +98,6 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Replace ad-hoc remote model aliases with a fixed version-controlled catalog using explicit `active` switches.
 - Add five curated OpenRouter free routes and fixed GPT-5.6 Sol/Terra/Luna plus GPT-5.4 mini ChatGPT routes.
 - Fix optional PostgreSQL mode so `DATABASE_URL` is omitted entirely when persistence is disabled; LiteLLM rejects an empty `DATABASE_URL`.
-
 - Make `127.0.0.1:11434` a client-neutral Ollama/OpenAI/Anthropic gateway suitable for Ollama Launch integrations.
 - Add native pass-through for OpenAI Chat Completions, OpenAI Responses and Anthropic Messages through Headroom.
 - Keep Ollama translation compatibility including tools, vision, structured output, thinking and `num_ctx`.
@@ -109,7 +130,8 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Initial public-ready project scaffold.
 - Ollama-compatible facade, Headroom, LiteLLM, Ollama/OpenRouter routing and managed upstream workflow.
 
-[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...v0.3.1
