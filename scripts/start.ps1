@@ -1,5 +1,7 @@
 . (Join-Path $PSScriptRoot "_common.ps1")
 
+Write-Step "Ensuring Cofer internal secrets"
+Ensure-CoferSecrets
 Write-Step "Ensuring physical Ollama is available"
 Ensure-PhysicalOllama
 
