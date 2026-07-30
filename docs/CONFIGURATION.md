@@ -79,6 +79,7 @@ but access is still subject to the signed-in Ollama account plan;
 provider 403/subscription errors are returned unchanged. The local discovery policy excludes
 `*:cloud` so these routes are not duplicated when present in physical `/api/tags`.
 
+
 ## Claude Code authentication boundary
 
 `collama launch claude` intentionally does not reuse the user's Claude `/login` token.
