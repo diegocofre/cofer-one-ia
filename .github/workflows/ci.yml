@@ -15,16 +15,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Install gateway and bridge test dependencies
-        run: |
-          python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
-          python -m pip install -e 'services/cupass-bridge[dev]'
+      - name: Install test dependencies
+        run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml 'python-multipart>=0.0.20,<1'
       - name: Compile Python
         run: python -m compileall services/ollama-gateway/app services/cupass-bridge/app tools collama/collama_launch.py
       - name: Gateway and contract tests
         run: python -m pytest services/ollama-gateway/tests
       - name: Cofer U Pass bridge tests
-        run: python -m pytest services/cupass-bridge/tests
+        run: PYTHONPATH=services/cupass-bridge python -m pytest services/cupass-bridge/tests
       - name: Build gateway container
         run: docker build -t cofer-one-ia-gateway-ci services/ollama-gateway
       - name: Build Cofer U Pass bridge container
