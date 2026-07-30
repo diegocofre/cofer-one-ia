@@ -131,7 +131,7 @@ function Show-LiteLLMDatabaseStatus {
 }
 
 function Ensure-CoferSecrets {
-    foreach($key in @("LITELLM_MASTER_KEY","LITELLM_SALT_KEY")){
+    foreach($key in @("LITELLM_MASTER_KEY","LITELLM_SALT_KEY","COFER_U_PASS_BRIDGE_KEY")){
         $value=Get-DotEnvValue $key
         if([string]::IsNullOrWhiteSpace($value)-or $value.StartsWith("CHANGE_ME")){Set-DotEnvValue $key (New-RandomSecret); Write-Host "Generated $key"}
     }

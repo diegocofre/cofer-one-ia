@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
+ensure_cofer_secrets
 (cd "$ROOT" && run_python tools/postgres_onboard.py migrate --env .env)
 ensure_physical_ollama
 (cd "$ROOT" && run_python tools/generate_litellm_config.py --env .env)
-compose up -d --build --force-recreate --remove-orphans litellm litellm-chatgpt headroom-gateway headroom-codex gateway
+compose up -d --build --force-recreate --remove-orphans cupass-bridge litellm litellm-chatgpt headroom-gateway headroom-codex gateway
 wait_service litellm http://127.0.0.1:4000/health/liveliness 180
 wait_service litellm-chatgpt http://127.0.0.1:4001/health/liveliness 180
 wait_service headroom-gateway http://127.0.0.1:8790/readyz 180

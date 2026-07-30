@@ -6,6 +6,27 @@ x-headroom-common: &headroom-common
   HEADROOM_SAVINGS_PROFILE: "${HEADROOM_SAVINGS_PROFILE:-coding}"
 
 services:
+  cupass-bridge:
+    build:
+      context: ./services/cupass-bridge
+    environment:
+      CUPASS_BRIDGE_API_KEY: ${COFER_U_PASS_BRIDGE_KEY}
+      CUPASS_BRIDGE_DATA_ROOT: /data
+      CUPASS_BRIDGE_REQUEST_TIMEOUT_SECONDS: ${COFER_U_PASS_REQUEST_TIMEOUT_SECONDS:-1800}
+      CUPASS_BRIDGE_WORKER_POLL_SECONDS: ${COFER_U_PASS_WORKER_POLL_SECONDS:-25}
+      CUPASS_BRIDGE_WORKER_STALE_SECONDS: ${COFER_U_PASS_WORKER_STALE_SECONDS:-90}
+      CUPASS_BRIDGE_MAX_FILE_BYTES: ${COFER_U_PASS_MAX_FILE_BYTES:-524288000}
+    volumes:
+      - ./data/cupass-bridge:/data
+    ports:
+      - "127.0.0.1:${COFER_U_PASS_BRIDGE_PORT:-4011}:4010"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:4010/health',headers={'Authorization':'Bearer '+os.environ['CUPASS_BRIDGE_API_KEY']}); urllib.request.urlopen(r,timeout=3).read()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   litellm:
     image: ${LITELLM_IMAGE:-ghcr.io/berriai/litellm:v1.93.0}
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -80,6 +101,8 @@ services:
       CHATGPT_LITELLM_URL: http://litellm-chatgpt:4000
       OLLAMA_BACKEND_URL: ${OLLAMA_BACKEND_URL:-http://host.docker.internal:11435}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      COFER_U_PASS_BRIDGE_URL: http://cupass-bridge:4010
+      COFER_U_PASS_BRIDGE_KEY: ${COFER_U_PASS_BRIDGE_KEY}
       GATEWAY_REQUEST_TIMEOUT_SECONDS: ${GATEWAY_REQUEST_TIMEOUT_SECONDS:-600}
       GATEWAY_MODEL_REFRESH_SECONDS: ${GATEWAY_MODEL_REFRESH_SECONDS:-15}
       GATEWAY_DEFAULT_CONTEXT_LENGTH: ${GATEWAY_DEFAULT_CONTEXT_LENGTH:-32768}
@@ -92,6 +115,7 @@ services:
       - litellm
       - litellm-chatgpt
       - headroom-gateway
+      - cupass-bridge
     restart: unless-stopped
 
   # Always-on escape hatch: the proxy stays ready, while using the cofer-direct

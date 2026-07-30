@@ -27,7 +27,7 @@ import secrets
 print('sk-cofer-'+secrets.token_hex(32))
 PY
 }
-ensure_cofer_secrets(){ for key in LITELLM_MASTER_KEY LITELLM_SALT_KEY;do local value; value="$(read_env "$key"||true)"; if [[ -z "$value"||"$value" == CHANGE_ME* ]];then set_env "$key" "$(random_secret)"; echo "Generated $key";fi;done; }
+ensure_cofer_secrets(){ for key in LITELLM_MASTER_KEY LITELLM_SALT_KEY COFER_U_PASS_BRIDGE_KEY;do local value; value="$(read_env "$key"||true)"; if [[ -z "$value"||"$value" == CHANGE_ME* ]];then set_env "$key" "$(random_secret)"; echo "Generated $key";fi;done; }
 url_ok(){ curl -fsS --max-time "${2:-3}" "$1" >/dev/null 2>&1; }
 wait_url(){
   local url="$1"

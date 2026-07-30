@@ -107,8 +107,9 @@ def test_bootstrap_waits_on_readiness_and_emits_service_diagnostics():
 def test_reconfigure_rebuilds_gateway_image_before_recreating_services():
     shell = text("scripts/reconfigure.sh")
     ps1 = text("scripts/reconfigure.ps1")
-    assert "compose up -d --build --force-recreate --remove-orphans litellm litellm-chatgpt headroom-gateway headroom-codex gateway" in shell
-    assert "Invoke-CoferCompose up -d --build --force-recreate --remove-orphans litellm litellm-chatgpt headroom-gateway headroom-codex gateway" in ps1
+    expected = "cupass-bridge litellm litellm-chatgpt headroom-gateway headroom-codex gateway"
+    assert f"compose up -d --build --force-recreate --remove-orphans {expected}" in shell
+    assert f"Invoke-CoferCompose up -d --build --force-recreate --remove-orphans {expected}" in ps1
 
 
 def test_git_bash_installer_refreshes_windows_canonical_and_legacy_locations():

@@ -15,14 +15,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Install gateway test dependencies
-        run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml
+      - name: Install test dependencies
+        run: python -m pip install -e 'services/ollama-gateway[dev]' pyyaml 'python-multipart>=0.0.20,<1'
       - name: Compile Python
-        run: python -m compileall services/ollama-gateway/app tools collama/collama_launch.py
+        run: python -m compileall services/ollama-gateway/app services/cupass-bridge/app tools collama/collama_launch.py
       - name: Gateway and contract tests
         run: python -m pytest services/ollama-gateway/tests
+      - name: Cofer U Pass bridge tests
+        run: PYTHONPATH=services/cupass-bridge python -m pytest services/cupass-bridge/tests
       - name: Build gateway container
         run: docker build -t cofer-one-ia-gateway-ci services/ollama-gateway
+      - name: Build Cofer U Pass bridge container
+        run: docker build -t cofer-one-ia-cupass-bridge-ci services/cupass-bridge
       - name: Validate config generator offline
         run: |
           cp .env.example .env
@@ -60,12 +64,17 @@ jobs:
           services = compose['services']
           assert 'postgres' not in services
           assert 'volumes' not in compose or 'litellm-postgres' not in (compose.get('volumes') or {})
+          assert 'cupass-bridge' in services
+          assert services['cupass-bridge']['ports'][0].endswith(':4010')
           assert services['headroom-gateway']['command'][-2:] == ['--port', '8787']
           assert 'headroom-chatgpt' not in services
           assert services['headroom-codex']['command'][-2:] == ['--port', '8787']
           assert 'profiles' not in services['headroom-codex']
           assert 'OPENAI_API_KEY' not in services['headroom-codex']['environment']
           assert 'headroom-gateway:8787' in services['gateway']['environment']['GATEWAY_UPSTREAM_URL']
+          assert services['gateway']['environment']['COFER_U_PASS_BRIDGE_URL'] == 'http://cupass-bridge:4010'
+          assert services['gateway']['environment']['COFER_U_PASS_BRIDGE_KEY'] == '${COFER_U_PASS_BRIDGE_KEY}'
+          assert 'cupass-bridge' in services['gateway']['depends_on']
           assert 'CHATGPT_GATEWAY_UPSTREAM_URL' not in services['gateway']['environment']
           assert services['gateway']['environment']['CHATGPT_LITELLM_URL'] == 'http://litellm-chatgpt:4000'
           assert services['litellm']['environment']['DATABASE_URL'] is None
