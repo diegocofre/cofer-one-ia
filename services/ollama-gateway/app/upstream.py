@@ -180,11 +180,12 @@ def _anthropic_error_response(
     )
 
 
-def _is_chatgpt_anthropic_request(original_payload: dict[str, Any] | None) -> bool:
-    if not isinstance(original_payload, dict):
-        return False
-    model = original_payload.get("model")
-    return isinstance(model, str) and model.startswith("openai/")
+def _should_normalize_anthropic_error(path: str, include_internal_auth: bool) -> bool:
+    # The ChatGPT subscription sidecar is the only Anthropic-surface upstream
+    # intentionally called without Cofer's internal LiteLLM bearer. Key this
+    # decision to the resolved route rather than the original public model name
+    # so Claude Desktop aliases receive the same protocol-correct error envelope.
+    return path in _ANTHROPIC_PATHS and not include_internal_auth
 
 
 async def proxy_json_request(
@@ -262,11 +263,7 @@ async def proxy_json_request(
                 )
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Upstream unavailable: {exc}") from exc
-        if (
-            not response.is_success
-            and path in _ANTHROPIC_PATHS
-            and _is_chatgpt_anthropic_request(original_payload)
-        ):
+        if not response.is_success and _should_normalize_anthropic_error(path, include_internal_auth):
             return _anthropic_error_response(
                 status_code=response.status_code,
                 content=response.content,
@@ -301,7 +298,7 @@ async def proxy_json_request(
         headers = response.headers
         await response.aclose()
         await client.aclose()
-        if path in _ANTHROPIC_PATHS and _is_chatgpt_anthropic_request(original_payload):
+        if _should_normalize_anthropic_error(path, include_internal_auth):
             return _anthropic_error_response(
                 status_code=status,
                 content=content,
