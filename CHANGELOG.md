@@ -4,6 +4,15 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-29
+
+### Fixed
+
+- Claude requests carrying Anthropic ToolSearch/deferred-tool beta semantics now bypass Headroom after gateway normalization and go directly to the dedicated LiteLLM Anthropic-compatibility deployment, preventing the unsupported `tool_search_tool_*` schema from being reintroduced before OpenRouter/Ollama providers.
+- The gateway strips `anthropic-beta` at the provider boundary while preserving `anthropic-version` and ordinary client-side tools.
+- ChatGPT-subscription failures returned through `/v1/messages` are normalized to Anthropic error envelopes; HTTP 429 is exposed as `rate_limit_error` so Claude Code can terminate promptly on subscription usage limits.
+- Added HTTP-boundary regression contracts reproducing the observed Nvidia ToolSearch rejection and ChatGPT `usage_limit_reached` behavior while confirming normal Anthropic requests keep Headroom optimization.
+
 ## [0.3.1] - 2026-07-28
 
 ### Fixed
@@ -93,7 +102,8 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Initial public-ready project scaffold.
 - Ollama-compatible facade, Headroom, LiteLLM, Ollama/OpenRouter routing and managed upstream workflow.
 
-[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.1.2...v0.2.0
