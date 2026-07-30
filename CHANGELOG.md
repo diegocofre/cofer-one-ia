@@ -4,6 +4,28 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+### Added
+
+- Added the `cupass-bridge` service for authenticated Cofer U Pass workers while keeping browser profiles, cookies and interactive authentication on the host.
+- Added dynamic Cofer U Pass model discovery from worker registrations, including per-model reasoning-effort metadata.
+- Added public `cupass/<provider>/<model>` aliases to the universal `/v1/models` and Ollama model catalogs.
+- Added gateway `/v1/files` resource-plane proxying and `/v1/models/{model}/capabilities` for Cofer U Pass models.
+- Added OpenAI Responses, Chat Completions and Ollama chat/generate routing for Cofer U Pass web models; Anthropic tool/message semantics remain explicitly unsupported.
+
+### Changed
+
+- Cofer U Pass routing now targets a registered profile separately from `request.model`, matching Cofer U Pass 1.2's `model + reasoning.effort` contract instead of the v1.1 `profile == model` behavior.
+- The gateway extension is layered on top of the existing 0.3.2 application so the Anthropic, ChatGPT subscription, OpenRouter and Ollama fixes remain unchanged.
+- Bootstrap now generates `COFER_U_PASS_BRIDGE_KEY` alongside the existing internal secrets.
+
+### Safety
+
+- Duplicate model routes across active Cofer U Pass profiles fail closed instead of choosing a worker arbitrarily.
+- Unsupported reasoning efforts and tool/function-calling requests are rejected before a web run is queued.
+- Cofer U Pass models use an explicit public namespace so a temporarily unavailable bridge cannot accidentally fall through to Ollama or OpenRouter routing.
+
 ## [0.3.2] - 2026-07-29
 
 ### Fixed
@@ -23,7 +45,7 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Claude model selection probes physical Ollama `/api/show` capabilities and hides/rejects local or cloud models that explicitly lack `tools`.
 - Windows Codex/ChatGPT and Claude Desktop launching falls back to Start-menu AppUserModelIDs when no stable executable path exists.
 - Added `codexapp` and `claudedesktop` launcher aliases.
-- Added regression contracts for the observed Claude auth, ToolSearch, system-role, capability-filter and Windows packaged-app failures.
+- Added regression contracts for the observed Claude auth, ToolSearch, system-role, capability-filter and Windows packaged-app launch failures.
 
 ## [0.3.0] - 2026-07-27
 
@@ -102,7 +124,8 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Initial public-ready project scaffold.
 - Ollama-compatible facade, Headroom, LiteLLM, Ollama/OpenRouter routing and managed upstream workflow.
 
-[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.2.0...v0.3.0
