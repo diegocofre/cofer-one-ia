@@ -237,3 +237,4 @@ from Claude's selector and rejected when named explicitly.
 For local coding/agent models, use a large context window appropriate for the client;
 Ollama's Codex integration recommends at least 64K. Cloud models are served through the
 signed-in physical Ollama daemon and use their cloud context capabilities.
+
