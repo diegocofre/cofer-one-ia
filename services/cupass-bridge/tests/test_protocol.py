@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+import os
+import tempfile
+
+# app.main constructs the production store at import time. Point that singleton
+# at an isolated test directory before importing the module; individual tests
+# still replace the store with their own tmp_path instance.
+os.environ.setdefault("CUPASS_BRIDGE_DATA_ROOT", tempfile.mkdtemp(prefix="cupass-bridge-tests-"))
+os.environ.setdefault("CUPASS_BRIDGE_API_KEY", "test-key")
+
 from fastapi.testclient import TestClient
 
 from app.config import Settings
