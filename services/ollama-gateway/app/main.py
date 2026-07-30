@@ -40,10 +40,11 @@ def _litellm_headers(*, include_internal_auth: bool = True) -> dict[str, str]:
     return headers
 
 
-CHATGPT_INTERNAL_PREFIX = "cofer-chatgpt--"
+CHATGPT_INTERNAL_PREFIX = "cgp-"
 CHATGPT_PUBLIC_PREFIX = "openai/"
-OPENROUTER_INTERNAL_PREFIX = "cofer-openrouter--"
-ANTHROPIC_INTERNAL_PREFIX = "cofer-anthropic--"
+OPENROUTER_INTERNAL_PREFIX = "cor-"
+ANTHROPIC_INTERNAL_PREFIX = "can-"
+
 def _public_model_name(name: str) -> str:
     if name.startswith(CHATGPT_INTERNAL_PREFIX):
         return CHATGPT_PUBLIC_PREFIX + name.removeprefix(CHATGPT_INTERNAL_PREFIX)
