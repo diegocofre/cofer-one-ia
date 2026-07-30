@@ -30,7 +30,7 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Claude model selection probes physical Ollama `/api/show` capabilities and hides/rejects local or cloud models that explicitly lack `tools`.
 - Windows Codex/ChatGPT and Claude Desktop launching falls back to Start-menu AppUserModelIDs when no stable executable path exists.
 - Added `codexapp` and `claudedesktop` launcher aliases.
-- Added regression contracts for the observed Claude auth, ToolSearch, system-role, capability-filter and Windows packaged-app launch failures.
+- Added regression contracts for the observed Claude auth, ToolSearch, system-role, capability-filter and Windows packaged-app failures.
 
 ## [0.3.0] - 2026-07-27
 
