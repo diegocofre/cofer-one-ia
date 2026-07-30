@@ -134,7 +134,7 @@ async def test_native_route_rewrites_chatgpt_public_alias_direct_to_oauth_sideca
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-chatgpt--gpt-5.6-luna"
+    assert forwarded["model"] == "cgp-gpt-5.6-luna"
     assert forwarded["input"] == payload["input"]
     assert forwarded["reasoning"] == payload["reasoning"]
     assert call[1].startswith("http://litellm-chatgpt:4000/")
@@ -149,7 +149,7 @@ async def test_native_route_rewrites_openrouter_alias_before_headroom(client):
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-openrouter--google/gemma-4-31b-it:free"
+    assert forwarded["model"] == "cor-google/gemma-4-31b-it:free"
     assert call[1].startswith("http://headroom/")
     assert call[2]["headers"]["Authorization"] == "Bearer sk-internal"
 
@@ -201,7 +201,7 @@ async def test_claude_desktop_alias_decodes_before_provider_routing(client):
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--nvidia/nemotron-3-ultra:free"
+    assert forwarded["model"] == "can-nvidia/nemotron-3-ultra:free"
     assert call[1].startswith("http://headroom/")
 
 
@@ -219,7 +219,7 @@ async def test_anthropic_messages_use_dedicated_chat_deployment_for_openrouter(c
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--nvidia/nemotron-3-super-120b-a12b:free"
+    assert forwarded["model"] == "can-nvidia/nemotron-3-super-120b-a12b:free"
     assert forwarded["tools"][0]["input_schema"] == {"type": "object"}
     assert call[1].startswith("http://headroom/v1/messages")
 
@@ -240,7 +240,7 @@ async def test_anthropic_local_non_thinking_model_drops_reasoning_controls(clien
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--phi4:14b"
+    assert forwarded["model"] == "can-phi4:14b"
     assert "thinking" not in forwarded
     assert "reasoning_effort" not in forwarded
     assert "output_config" not in forwarded
@@ -262,7 +262,7 @@ async def test_anthropic_local_thinking_model_preserves_reasoning_controls(clien
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--qwen3:8b"
+    assert forwarded["model"] == "can-qwen3:8b"
     assert forwarded["thinking"] == thinking
     assert forwarded["output_config"] == {"effort": "high"}
 
@@ -311,7 +311,7 @@ async def test_chatgpt_anthropic_messages_moves_system_into_first_user_content(c
     assert call[1].startswith("http://litellm-chatgpt:4000/v1/messages")
     assert "Authorization" not in call[2]["headers"]
     assert "system" not in forwarded
-    assert forwarded["model"] == "cofer-chatgpt--gpt-5.6-luna"
+    assert forwarded["model"] == "cgp-gpt-5.6-luna"
     first_content = forwarded["messages"][0]["content"]
     assert first_content[0]["type"] == "text"
     assert "You are Claude Code." in first_content[0]["text"]
@@ -399,7 +399,7 @@ async def test_v031_openrouter_anthropic_strips_toolsearch_schema(client):
     assert response.status_code == 200
     call = FakeAsyncClient.instances[-1].calls[0]
     forwarded = __import__("json").loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--nvidia/nemotron-3-super-120b-a12b:free"
+    assert forwarded["model"] == "can-nvidia/nemotron-3-super-120b-a12b:free"
     assert len(forwarded["tools"]) == 1
     assert forwarded["tools"][0]["name"] == "Read"
     assert "defer_loading" not in forwarded["tools"][0]

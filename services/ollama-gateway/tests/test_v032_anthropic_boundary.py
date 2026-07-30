@@ -115,7 +115,7 @@ async def test_toolsearch_request_bypasses_headroom_and_strips_beta_header(clien
     call = FakeAsyncClient.instances[-1].calls[0]
     assert call[1] == "http://litellm:4000/v1/messages"
     forwarded = json.loads(call[2]["content"])
-    assert forwarded["model"] == "cofer-anthropic--nvidia/nemotron-3-super-120b-a12b:free"
+    assert forwarded["model"] == "can-nvidia/nemotron-3-super-120b-a12b:free"
     assert [tool["name"] for tool in forwarded["tools"]] == ["Read"]
     assert "defer_loading" not in forwarded["tools"][0]
     lowered_headers = {key.lower() for key in call[2]["headers"]}

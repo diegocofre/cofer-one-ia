@@ -41,11 +41,20 @@ The universal gateway routes `openai/...` aliases directly to the ChatGPT LiteLL
 sidecar. There is no ChatGPT-specific Headroom service or routing override. Authenticate
 with `scripts/auth-chatgpt.*`; do not place OAuth tokens in `.env`.
 
+## Private deployment prefixes
+
+The generated LiteLLM deployment IDs use compact private prefixes. These names are internal routing identifiers and are never published as public model aliases:
+
+```text
+cor- = Cofer OpenRouter Responses/OpenAI-compatible deployment
+can- = Cofer Anthropic Messages compatibility deployment
+cgp- = Cofer ChatGPT subscription deployment
+```
 
 ## OpenRouter Responses routing
 
 OpenRouter public model names remain native slugs such as `google/gemma-4-31b-it:free`.
-The gateway rewrites them to neutral internal LiteLLM deployment IDs so `/v1/responses`
+The gateway rewrites them to neutral internal `cor-...` LiteLLM deployment IDs so `/v1/responses`
 does not infer the vendor prefix as a provider. LiteLLM then targets OpenRouter through
 its OpenAI-compatible API at `OPENROUTER_API_BASE` (default
 `https://openrouter.ai/api/v1`) and authenticates upstream only with
@@ -55,11 +64,11 @@ its OpenAI-compatible API at `OPENROUTER_API_BASE` (default
 Local Ollama and Ollama Cloud expose two internal LiteLLM deployments per logical model.
 OpenAI-surface clients use `openai/<model>` with `OLLAMA_OPENAI_BASE_URL`, preserving the
 physical daemon's native `/v1/responses` path. Anthropic `/v1/messages` clients use a
-private `cofer-anthropic--*` deployment backed by `ollama_chat/<model>` and
+private `can-*` deployment backed by `ollama_chat/<model>` and
 `OLLAMA_BACKEND_URL`. The public model name is unchanged.
 
 OpenRouter follows the same split: native OpenAI-compatible Responses for Codex-style
-clients, and a private `cofer-anthropic--*` deployment backed by LiteLLM's `openrouter/*`
+clients, and a private `can-*` deployment backed by LiteLLM's `openrouter/*`
 chat transport for Claude Code. This keeps Claude tool schemas out of the Responses
 bridge without regressing the already validated Codex/OpenRouter path.
 

@@ -31,13 +31,13 @@ def test_generator_preserves_single_provider_prefixes():
     assert 'model: "openai/qwen:latest"' in text
     assert 'api_base: os.environ/OLLAMA_OPENAI_BASE_URL' in text
     assert 'api_key: "ollama"' in text
-    assert 'model_name: "cofer-anthropic--qwen:latest"' in text
+    assert 'model_name: "can-qwen:latest"' in text
     assert 'model: "ollama_chat/qwen:latest"' in text
     assert 'api_base: os.environ/OLLAMA_BACKEND_URL' in text
-    assert 'model_name: "cofer-openrouter--or"' in text
+    assert 'model_name: "cor-or"' in text
     assert 'model: "openai/auto"' in text
     assert 'api_base: os.environ/OPENROUTER_API_BASE' in text
-    assert 'model_name: "cofer-anthropic--or"' in text
+    assert 'model_name: "can-or"' in text
     assert 'model: "openrouter/auto"' in text
     assert "openrouter/openrouter" not in text
 
@@ -115,13 +115,13 @@ def test_fixed_remote_catalog_and_physical_routes():
         elif provider == "openrouter":
             normalized = physical.removeprefix("openrouter/")
             target = f"openai/{normalized}"
-            internal = f"cofer-openrouter--{logical}"
+            internal = f"cor-{logical}"
             assert f'model_name: "{internal}"' in rendered
             assert f'model_name: "{logical}"' not in rendered
             assert 'api_base: os.environ/OPENROUTER_API_BASE' in rendered
         else:
             target = f"chatgpt/{physical}"
-            internal = f"cofer-chatgpt--{logical.removeprefix('openai/')}"
+            internal = f"cgp-{logical.removeprefix('openai/')}"
             assert f'model_name: "{internal}"' in rendered
             assert f'model_name: "{logical}"' not in rendered
         assert f'model: "{target}"' in rendered
@@ -151,19 +151,19 @@ def test_generator_splits_chatgpt_from_master_key_gateway():
     assert 'model_name: "qwen3:8b"' in main
     assert 'model: "openai/qwen3:8b"' in main
     assert 'api_base: os.environ/OLLAMA_OPENAI_BASE_URL' in main
-    assert 'model_name: "cofer-anthropic--qwen3:8b"' in main
+    assert 'model_name: "can-qwen3:8b"' in main
     assert 'model: "ollama_chat/qwen3:8b"' in main
     assert 'api_base: os.environ/OLLAMA_BACKEND_URL' in main
-    assert 'model_name: "cofer-openrouter--google/gemma-4-31b-it:free"' in main
+    assert 'model_name: "cor-google/gemma-4-31b-it:free"' in main
     assert 'model_name: "google/gemma-4-31b-it:free"' not in main
     assert 'model: "openai/google/gemma-4-31b-it:free"' in main
     assert 'api_base: os.environ/OPENROUTER_API_BASE' in main
-    assert 'model_name: "cofer-anthropic--google/gemma-4-31b-it:free"' in main
+    assert 'model_name: "can-google/gemma-4-31b-it:free"' in main
     assert 'model: "openrouter/google/gemma-4-31b-it:free"' in main
     assert "chatgpt/responses/" not in main
     assert "master_key: os.environ/LITELLM_MASTER_KEY" in main
 
-    assert 'model_name: "cofer-chatgpt--gpt-5.6-luna"' in chatgpt
+    assert 'model_name: "cgp-gpt-5.6-luna"' in chatgpt
     assert 'model: "chatgpt/gpt-5.6-luna"' in chatgpt
     assert 'model: "chatgpt/responses/gpt-5.6-luna"' not in chatgpt
     assert "master_key" not in chatgpt
@@ -184,12 +184,12 @@ def test_anthropic_compatibility_deployments_are_separate_from_responses_routes(
 
     assert 'model_name: "phi4:14b"' in rendered
     assert 'model: "openai/phi4:14b"' in rendered
-    assert 'model_name: "cofer-anthropic--phi4:14b"' in rendered
+    assert 'model_name: "can-phi4:14b"' in rendered
     assert 'model: "ollama_chat/phi4:14b"' in rendered
 
-    assert 'model_name: "cofer-openrouter--nvidia/nemotron-3-super-120b-a12b:free"' in rendered
+    assert 'model_name: "cor-nvidia/nemotron-3-super-120b-a12b:free"' in rendered
     assert 'model: "openai/nvidia/nemotron-3-super-120b-a12b:free"' in rendered
-    assert 'model_name: "cofer-anthropic--nvidia/nemotron-3-super-120b-a12b:free"' in rendered
+    assert 'model_name: "can-nvidia/nemotron-3-super-120b-a12b:free"' in rendered
     assert 'model: "openrouter/nvidia/nemotron-3-super-120b-a12b:free"' in rendered
 
 
@@ -202,6 +202,7 @@ def test_chatgpt_responses_prefix_is_normalized_out_of_physical_model():
         }
     ]
     rendered = generator.render(models, providers={"chatgpt"}, include_master_key=False)
+    assert 'model_name: "cgp-gpt-5.6-luna"' in rendered
     assert 'model: "chatgpt/gpt-5.6-luna"' in rendered
     assert 'model: "chatgpt/responses/gpt-5.6-luna"' not in rendered
     assert 'mode: responses' in rendered

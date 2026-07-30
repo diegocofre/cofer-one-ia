@@ -61,8 +61,8 @@ config/generated/litellm-chatgpt.yaml
   ChatGPT subscription only, no proxy master key
 ```
 
-Public names remain `openai/...`; the sidecar deployment names are neutral
-aliases such as `cofer-chatgpt--gpt-5.6-luna`, targeting
+Public names remain `openai/...`; the sidecar deployment names use the private
+`cgp-` namespace, for example `cgp-gpt-5.6-luna`, targeting
 `chatgpt/gpt-5.6-luna` internally, with `mode: responses` selecting the Responses API wire path.
 
 After authentication or catalog changes:

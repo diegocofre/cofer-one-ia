@@ -14,6 +14,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED_PROVIDERS = {"openrouter", "ollama", "ollama_cloud", "chatgpt"}
+CHATGPT_INTERNAL_PREFIX = "cgp-"
+OPENROUTER_INTERNAL_PREFIX = "cor-"
+ANTHROPIC_INTERNAL_PREFIX = "can-"
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -119,13 +122,13 @@ def internal_model_name(item: dict[str, Any]) -> str:
     if item["provider"] == "chatgpt":
         public = str(item["name"])
         suffix = public.removeprefix("openai/")
-        return "cofer-chatgpt--" + suffix
+        return CHATGPT_INTERNAL_PREFIX + suffix
     if item["provider"] == "openrouter":
         # Responses requests must never expose provider-looking public aliases
         # (for example ``google/...``) to LiteLLM's provider inference. Keep
         # the ergonomic public name at the Cofer gateway and use a neutral
         # deployment id internally.
-        return "cofer-openrouter--" + str(item["name"])
+        return OPENROUTER_INTERNAL_PREFIX + str(item["name"])
     return str(item["name"])
 
 
@@ -138,7 +141,8 @@ def anthropic_internal_model_name(item: dict[str, Any]) -> str:
     distinct deployment lets Codex/OpenAI clients continue using native
     Responses endpoints at the same time.
     """
-    return "cofer-anthropic--" + str(item["name"])
+    return ANTHROPIC_INTERNAL_PREFIX + str(item["name"])
+
 
 def render(
     models: list[dict[str, Any]],
@@ -212,6 +216,7 @@ def render(
     if include_master_key:
         lines.extend(["general_settings:", "  master_key: os.environ/LITELLM_MASTER_KEY", ""])
     return "\n".join(lines)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate LiteLLM config for Cofer One IA")

@@ -4,6 +4,13 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-30
+
+### Changed
+
+- Shortened private LiteLLM deployment prefixes to `cor-` (Cofer OpenRouter), `can-` (Cofer Anthropic compatibility), and `cgp-` (Cofer ChatGPT) so Headroom's truncated per-model savings labels remain identifiable without changing public model names or physical provider IDs.
+- Updated gateway routing, generated LiteLLM configuration contracts, regression tests, and routing documentation to use the compact private deployment namespace.
+
 ## [0.3.2] - 2026-07-29
 
 ### Fixed
@@ -102,7 +109,8 @@ All notable changes to Cofer One IA are documented here. The project follows Sem
 - Initial public-ready project scaffold.
 - Ollama-compatible facade, Headroom, LiteLLM, Ollama/OpenRouter routing and managed upstream workflow.
 
-[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/diegocofre/cofer-one-ia/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/diegocofre/cofer-one-ia/compare/v0.2.0...v0.3.0
